@@ -15,8 +15,8 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace Alethic.Node.AspNet.Components.Tests;
 
 /// <summary>
-/// The server render against a server module that keeps <c>renderOutlets</c>' contract without a framework: components
-/// found by name, props marshalled, commands raised on the request, failures carried back, and the site fetched in
+/// The server render against a server module whose <c>render</c> knows no framework: components found by name, props
+/// marshalled, commands raised on the request, a page's state shared, failures carried back, and the site fetched in
 /// process.
 /// </summary>
 [TestClass]
@@ -24,41 +24,43 @@ public class ComponentServerRenderTests
 {
 
     /// <summary>
-    /// A server module whose components are functions answering what became of them, and whose
-    /// <c>renderOutlets</c> calls each component it is given.
+    /// A server module whose components are functions answering their HTML, and whose <c>render</c> calls them.
     /// </summary>
     static readonly NodeModuleSource Bundle = TestModules.FromText("bundle.cjs", """
-        const Echo = props => ({ html: JSON.stringify(props, (k, v) => typeof v === 'function' ? `fn:${v.name}` : v) });
+        const Echo = props => JSON.stringify(props, (k, v) => typeof v === 'function' ? `fn:${v.name}` : v);
 
         async function Command(props) {
-            try {
-                return { html: JSON.stringify(await props.onGo(1, 'two')) ?? 'undefined' };
-            } catch (e) {
-                return { error: { message: e.message, dotnetErrorId: e.dotnetErrorId } };
-            }
+            return JSON.stringify(await props.onGo(1, 'two')) ?? 'undefined';
         }
 
         async function Fetch() {
-            return { html: await (await fetch('/data?x=1')).text() };
+            return await (await fetch('/data?x=1')).text();
         }
 
-        // Rendered by nobody: renderOutlets says nothing of it.
-        const Forgets = { forgotten: true };
+        // Calls its callback and walks away, as a component may.
+        function Ignores(props) {
+            props.onGo().then(() => undefined);
+            return 'ignored';
+        }
+
+        // Counts the components of the page it rendered in.
+        function Counts(props, page) {
+            page.count = (page.count ?? 0) + 1;
+            return String(page.count);
+        }
+
+        const NotHtml = () => 42;
 
         module.exports = {
             Echo,
             Command,
             Fetch,
-            Forgets,
+            Ignores,
+            Counts,
+            NotHtml,
             Nested: { Deeper: { Echo } },
-            async renderOutlets(requests) {
-                const out = {};
-                for (const r of requests) {
-                    if (r.component.forgotten !== true) {
-                        out[r.id] = await r.component(r.props);
-                    }
-                }
-                return JSON.stringify(out);
+            async render(component, props, page) {
+                return await component(props, page);
             },
         };
         """);
@@ -120,8 +122,7 @@ public class ComponentServerRenderTests
     }
 
     /// <summary>
-    /// A name is a dotted path through the module's exports, and the component found is what <c>renderOutlets</c> is
-    /// given.
+    /// A name is a dotted path through the module's exports, and the component found is what <c>render</c> is given.
     /// </summary>
     [TestMethod]
     public async Task A_name_is_a_path_through_the_exports()
@@ -213,25 +214,61 @@ public class ComponentServerRenderTests
     }
 
     /// <summary>
-    /// A bundle that says nothing of a component fails the render.
+    /// A command's rejection the component leaves unhandled fails the component, after its answer comes, however late,
+    /// carrying the handler's exception.
     /// </summary>
     [TestMethod]
-    public async Task A_component_the_bundle_forgets_fails_the_render()
+    public async Task A_rejection_left_unhandled_fails_the_component()
     {
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ComponentServerRender.RenderAsync(Request(), pool, Bundle, [Outlet("a", "Forgets", [])], TimeSpan.FromSeconds(30)));
+        var thrown = new InvalidOperationException("handler failed");
+        var outlet = Outlet("a", "Ignores", new ComponentObject { { "onGo", new ComponentCommand("Go") } }, async (name, args) =>
+        {
+            await Task.Delay(50);
+            throw thrown;
+        });
+
+        var rendered = await ComponentServerRender.RenderAsync(Request(), pool, Bundle, [outlet, Outlet("b", "Echo", [])], TimeSpan.FromSeconds(30));
+
+        Assert.IsNull(rendered["a"].Html);
+        Assert.AreSame(thrown, rendered["a"].Error!.Exception);
+        Assert.AreEqual("{}", rendered["b"].Html);
     }
 
     /// <summary>
-    /// A bundle without <c>renderOutlets</c> fails the render.
+    /// The components of one page share one page object; another page has its own.
     /// </summary>
     [TestMethod]
-    public async Task A_bundle_without_renderOutlets_fails_the_render()
+    public async Task A_page_shares_one_page_object()
+    {
+        var first = await ComponentServerRender.RenderAsync(Request(), pool, Bundle, [Outlet("a", "Counts", []), Outlet("b", "Counts", [])], TimeSpan.FromSeconds(30));
+        var second = await ComponentServerRender.RenderAsync(Request(), pool, Bundle, [Outlet("a", "Counts", [])], TimeSpan.FromSeconds(30));
+
+        Assert.AreEqual("1", first["a"].Html);
+        Assert.AreEqual("2", first["b"].Html);
+        Assert.AreEqual("1", second["a"].Html);
+    }
+
+    /// <summary>
+    /// A <c>render</c> that resolves to something other than HTML fails the component.
+    /// </summary>
+    [TestMethod]
+    public async Task A_render_that_is_not_HTML_fails_the_component()
+    {
+        var rendered = await ComponentServerRender.RenderAsync(Request(), pool, Bundle, [Outlet("a", "NotHtml", [])], TimeSpan.FromSeconds(30));
+        StringAssert.Contains(rendered["a"].Error!.Message, "not a string of HTML");
+    }
+
+    /// <summary>
+    /// A module without <c>render</c> fails the render.
+    /// </summary>
+    [TestMethod]
+    public async Task A_module_without_render_fails_the_render()
     {
         var bundle = TestModules.FromText("empty.cjs", "module.exports = {};");
 
         // Thrown on the engine's thread, which node-api-dotnet hands back wrapped.
         var thrown = await Assert.ThrowsAsync<Exception>(() => ComponentServerRender.RenderAsync(Request(), pool, bundle, [Outlet("a", "Echo", [])], TimeSpan.FromSeconds(30)));
-        StringAssert.Contains(thrown.Message, "exports no renderOutlets");
+        StringAssert.Contains(thrown.Message, "exports no render function");
     }
 
     /// <summary>

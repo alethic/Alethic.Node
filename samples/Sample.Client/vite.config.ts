@@ -7,7 +7,7 @@ import { defineConfig, UserConfig } from "vite";
  * - `aspnet`: the ASP.NET Core sample's browser entry, `app.js`, which hydrates the document.
  * - `ssr`: the ASP.NET Core sample's server entry, `app.cjs`, a `fetch` handler and its router.
  * - `systemweb`: the Web Forms sample's browser entry, `client.js`, exporting `outlet` and the components.
- * - `systemweb-ssr`: the Web Forms sample's server bundle, `server.cjs`, exporting `renderOutlets`.
+ * - `systemweb-ssr`: the Web Forms sample's server bundle, `server.cjs`, exporting `render`.
  *
  * The server bundles run on Node embedded in a .NET process, whose `require` reads built-ins only, so
  * everything else goes inside them, in one file: the embedded runtime registers no dynamic-import

@@ -11,7 +11,7 @@ Lets an ASP.NET Web Forms page host JavaScript components — React, or any othe
 A control names a component by two things: the **module** it is in, and its **name** within that module. Each side has
 its own module, because each side has its own build:
 - **`Module`**, for the browser: an ES module that exports `outlet` and the components.
-- **`ServerModule`**, for the server: a CommonJS file that exports `renderOutlets` and the same components.
+- **`ServerModule`**, for the server: a CommonJS file that exports `render` and the same components.
 
 Both follow the contract under [The modules](#the-modules).
 
@@ -99,9 +99,9 @@ Alethic.Node.AspNet).
 
 ## Server rendering
 
-Where a control has a `ServerModule`, its component renders once `PreRender` is complete, in one call to that module's
-`renderOutlets` for all the components on the page that share it. Each control then sends its component's HTML inside
-its element. The browser shows that HTML until the component has rendered there. Whether it then replaces that HTML or
+Where a control has a `ServerModule`, its component renders once `PreRender` is complete, with that module's
+`render`, one after another with the page's other components that share the module. Each control then sends its
+component's HTML inside its element. The browser shows that HTML until the component has rendered there. Whether it then replaces that HTML or
 hydrates it is the module's choice.
 
 A component's `fetch` of the site is answered in process, by the site's own handler, as the visitor (see
@@ -150,52 +150,48 @@ export function outlet(Component, element, props) {
 }
 ```
 
-### `renderOutlets(requests)`
+### `render(component, props, page)`
 
 Exported by the server's module, which runs on Node embedded in the worker process. That runtime cannot `import()`, so
 the module is CommonJS. Node's `require` resolves what it requires as it would for any program, so a module that
 bundles its dependencies needs nothing beside it. A bundled module also needs `process.env.NODE_ENV` defined.
 
-- **`requests`** is every component on the page that renders on the server with this module: `[{ id, component, props }]`,
-  where `component` is what `Name` found in the module. Each callback in the props is a function returning a promise,
-  which raises the command on the page there and then.
-- **It resolves to** JSON naming what became of every component, by `id`: `{ html }`, or
-  `{ error: { message, stack, componentStack, dotnetErrorId } }`. A component it says nothing of fails the page.
-- **A command whose handler threw** rejects with an `Error` carrying `dotnetErrorId`. Returning that id in the
-  component's error makes the handler's exception the inner exception of the control's `ComponentRenderException`.
+- **`component`** is what `Name` found in the module.
+- **`props`** are the component's props. Each callback is a function returning a promise, which raises the command on
+  the page there and then.
+- **`page`** is one plain object for the whole page render, the same for each of its components and new for every
+  page: whatever the page's components share, such as a cache, goes on it.
+- **It resolves to** the component's HTML, or throws why there is none.
 
-A `fetch` of the site made while `renderOutlets` runs, to a relative URL or the page's own origin, is answered in
-process by the site's own handler, as the visitor.
+The library calls it for each component on the page, one after another, and does the rest:
+- it waits for the commands each component called to be answered;
+- a component that throws, or leaves a command's rejection unhandled, fails, with the command handler's exception as
+  the inner exception where that is what failed it;
+- it reports what became of each component to the control.
+
+A `fetch` of the site made while `render` runs, to a relative URL or the page's own origin, is answered in process by
+the site's own handler, as the visitor.
 
 ```tsx
 import { prerender } from "react-dom/static";
 
 export * from "./components";
 
-export async function renderOutlets(requests) {
-    const rendered = {};
-    for (const { id, component: Component, props } of requests) {
-        let error = null;
-        try {
-            const { prelude } = await prerender(<Component {...props} />, {
-                onError: (e, info) => { error ??= describe(e, info?.componentStack); },
-            });
-            const html = await new Response(prelude).text();
-            rendered[id] = error ? { error } : { html };
-        } catch (e) {
-            rendered[id] = { error: error ?? describe(e) };
-        }
-    }
-    return JSON.stringify(rendered);
-}
+export async function render(Component, props, page) {
+    page.cache ??= new Map();
 
-function describe(e, componentStack) {
-    return { message: e?.message ?? String(e), stack: e?.stack, componentStack, dotnetErrorId: e?.dotnetErrorId };
+    let failure;
+    const { prelude } = await prerender(<Providers cache={page.cache}><Component {...props} /></Providers>, {
+        onError: (e, info) => { failure ??= Object.assign(e, { componentStack: info?.componentStack }); },
+    });
+
+    if (failure !== undefined) {
+        throw failure;
+    }
+
+    return await new Response(prelude).text();
 }
 ```
 
-The control trusts what `renderOutlets` reports, so failures are failures only as far as the module reports them.
-React, for one, recovers from some errors by leaving a component to the browser, and tells only `onError`, which the
-example reports. A stricter module also waits for the commands each component called and fails a component that left
-one's rejection unhandled: wrap each callback, mark the rejections that pass through it as that component's, and check
-Node's `unhandledRejection` reports for them before answering.
+React, for one, recovers from some errors by leaving a component to the browser, and tells only `onError`: throwing
+what it reported there is what makes those failures too. A `componentStack` on what is thrown is reported with it.

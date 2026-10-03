@@ -34,9 +34,10 @@ namespace Alethic.Node.AspNet.Components;
 /// script is a classic one that imports the client with <c>import()</c>, not a module.
 ///
 /// Where there is a server module, <see cref="ServerModule"/>, the page's components are also rendered to HTML on the
-/// server, on Node embedded in the worker process, each found in it by <see cref="Name"/>, in one call to the module's
-/// <c>renderOutlets</c> for all those on the page that share it, once the page's <c>PreRender</c> is complete; and each control sends its component's HTML
-/// inside its element, for the client to replace or hydrate. A command the component raises while it renders on the
+/// server, on Node embedded in the worker process, once the page's <c>PreRender</c> is complete: each found in the
+/// module by <see cref="Name"/>, and rendered by the module's <c>render</c>, one after another, with the same
+/// <c>page</c> object for all those on the page that share the module. Each control sends its component's HTML inside
+/// its element, for the module in the browser to replace or hydrate. A command the component raises while it renders on the
 /// server raises <see cref="Command"/> there and then, in the page's own request. On a page that is <c>Async="true"</c>
 /// the render is an async page task, and a command may be answered asynchronously; on any other the request blocks
 /// while it renders, and a command answered asynchronously fails.
@@ -127,7 +128,7 @@ public class Component : WebControl, IPostBackEventHandler
     public string? ScriptAttributes { get; set; }
 
     /// <summary>
-    /// The server's module: a CommonJS file exporting <c>renderOutlets</c>, and the component <see cref="Name"/> names,
+    /// The server's module: a CommonJS file exporting <c>render</c>, and the component <see cref="Name"/> names,
     /// somewhere nothing serves it, which Node embedded in the worker process <c>require</c>s. A path from the
     /// application's root, <c>~/</c>, or an absolute one, which must be there. The component renders only in the browser
     /// where this is not set.

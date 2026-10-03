@@ -11,25 +11,135 @@ using Microsoft.JavaScript.NodeApi;
 namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
-/// Renders a page's components to HTML in one call to a server module's <c>renderOutlets</c>, on a Node engine, as
-/// the page's request.
+/// Renders a page's components to HTML with a server module's <c>render</c>, on a Node engine, as the page's request.
 /// </summary>
 /// <remarks>
 /// Each component is found in the module by its name, an export or a dotted path through one; a name the module has
-/// nothing at fails that component. The module is given each component with its props as JavaScript values, every
-/// callback a function that raises its command on the request and answers with a promise of the result. What the
-/// components fetch of the site is answered in process, by <see cref="NodeRequest"/>.
-///
-/// <c>renderOutlets(requests)</c> takes <c>{ id, component, props }</c> for each component, <c>component</c> the one the
-/// name found, and resolves to JSON naming what became of each, by id: <c>{ html }</c>, or <c>{ error: { message, stack, componentStack, dotnetErrorId } }</c>.
-/// A command whose handler threw rejects with an <c>Error</c> carrying a <c>dotnetErrorId</c>, by which the exception
-/// is found again to be the inner exception of the component's error.
+/// nothing at fails that component. The module's <c>render(component, props, page)</c> renders one component to HTML,
+/// or throws: it is all a module provides. The rest is the library's, in <see cref="PageScript"/>, which the engine is
+/// given once: it renders a page's components one after another, all with the same <c>page</c> object, which they
+/// share; it makes every callback in the props a function that raises its command on the request, counts the commands
+/// a component has called, waits for their answers, and fails a component that left one's rejection unhandled; and it
+/// reports what became of each. What the components fetch of the site is answered in process, by
+/// <see cref="NodeRequest"/>.
 /// </remarks>
 internal static class ComponentServerRender
 {
 
     /// <summary>
-    /// Reads what <c>renderOutlets</c> answers.
+    /// The name of the global the engine's half of this lives under.
+    /// </summary>
+    const string BridgeName = "__alethicNodeComponents";
+
+    /// <summary>
+    /// Renders a page: each component with the module's <c>render</c>, its callbacks tracked, its failures reported.
+    /// Completes with the bridge, whose <c>renderPage(render, requests)</c> resolves to the JSON of what became of each
+    /// component, by id: <c>{ html }</c>, or <c>{ error: { message, stack, componentStack, dotnetErrorId } }</c>.
+    /// </summary>
+    /// <remarks>
+    /// A command's rejection is marked as the component's by the error itself, since that is all an unhandled rejection
+    /// reports, and a component that chains on a callback's promise leaves its own promise unhandled, not the
+    /// callback's. Node reports a rejection left unhandled once the microtasks it was rejected in have run: a turn of
+    /// the event loop after a component's commands are all answered.
+    /// </remarks>
+    const string PageScript = """
+        (() => {
+            const owners = new WeakMap();
+
+            process.on('unhandledRejection', reason => {
+                const owner = reason !== null && typeof reason === 'object' ? owners.get(reason) : undefined;
+                if (owner !== undefined && owner.page.unhandled.has(owner.id) === false) {
+                    owner.page.unhandled.set(owner.id, reason);
+                }
+            });
+
+            const turn = () => new Promise(resolve => setImmediate(resolve));
+
+            function track(value, page, id) {
+                if (typeof value === 'function') {
+                    const callback = value;
+                    const tracked = (...args) => {
+                        page.pending++;
+                        let called;
+                        try {
+                            called = Promise.resolve(callback(...args));
+                        } catch (e) {
+                            called = Promise.reject(e);
+                        }
+
+                        return called
+                            .then(v => v, e => {
+                                if (e !== null && typeof e === 'object') {
+                                    owners.set(e, { page, id });
+                                }
+
+                                throw e;
+                            })
+                            .finally(() => {
+                                page.pending--;
+                            });
+                    };
+
+                    Object.defineProperty(tracked, 'name', { value: callback.name });
+                    return tracked;
+                }
+
+                if (Array.isArray(value)) {
+                    return value.map(i => track(i, page, id));
+                }
+
+                if (value !== null && typeof value === 'object') {
+                    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, track(v, page, id)]));
+                }
+
+                return value;
+            }
+
+            function describe(e) {
+                const error = e !== null && typeof e === 'object' ? e : {};
+                return {
+                    message: e instanceof Error ? e.message : String(e),
+                    stack: typeof error.stack === 'string' ? error.stack : undefined,
+                    componentStack: typeof error.componentStack === 'string' ? error.componentStack : undefined,
+                    dotnetErrorId: typeof error.dotnetErrorId === 'string' ? error.dotnetErrorId : undefined,
+                };
+            }
+
+            async function renderPage(render, requests) {
+                const shared = {};
+                const page = { pending: 0, unhandled: new Map() };
+                const rendered = {};
+
+                for (const { id, component, props } of requests) {
+                    let html;
+                    let failure;
+                    try {
+                        html = await render(component, track(props, page, id), shared);
+                        if (typeof html !== 'string') {
+                            throw new TypeError(`The server module's render resolved to ${typeof html}, not a string of HTML.`);
+                        }
+                    } catch (e) {
+                        failure = e;
+                    }
+
+                    while (page.pending > 0) {
+                        await turn();
+                    }
+
+                    await turn();
+                    failure ??= page.unhandled.get(id);
+                    rendered[id] = failure !== undefined ? { error: describe(failure) } : { html };
+                }
+
+                return JSON.stringify(rendered);
+            }
+
+            return { renderPage };
+        })();
+        """;
+
+    /// <summary>
+    /// Reads what <c>renderPage</c> answers.
     /// </summary>
     static readonly JsonSerializerOptions ReadOptions = new(JsonSerializerDefaults.Web);
 
@@ -88,8 +198,8 @@ internal static class ComponentServerRender
     }
 
     /// <summary>
-    /// The render, on the engine's thread: each component found in the module, and their requests handed to
-    /// <c>renderOutlets</c>.
+    /// The render, on the engine's thread: each component found in the module, and the page rendered with the module's
+    /// <c>render</c>.
     /// </summary>
     /// <param name="request">The request.</param>
     /// <param name="outlets">The components.</param>
@@ -99,9 +209,9 @@ internal static class ComponentServerRender
     {
         return async exports =>
         {
-            var renderOutlets = exports["renderOutlets"];
-            if (renderOutlets.IsFunction() == false)
-                throw new InvalidOperationException("The server module exports no renderOutlets function.");
+            var render = exports["render"];
+            if (render.IsFunction() == false)
+                throw new InvalidOperationException("The server module exports no render function.");
 
             var requests = JSValue.CreateArray(0);
             var count = 0;
@@ -120,9 +230,25 @@ internal static class ComponentServerRender
                 requests[count++] = item;
             }
 
-            var rendered = await ((JSPromise)request.Call(renderOutlets, exports, requests)).AsTask();
+            var bridge = Bridge();
+            var rendered = await ((JSPromise)request.Call(bridge["renderPage"], bridge, render, requests)).AsTask();
             return (string)rendered;
         };
+    }
+
+    /// <summary>
+    /// The engine's half of this, made the first time a page renders on the engine. On the engine's thread.
+    /// </summary>
+    static JSValue Bridge()
+    {
+        var global = JSValue.Global;
+        var bridge = global[BridgeName];
+        if (bridge.IsObject())
+            return bridge;
+
+        bridge = JSValue.RunScript(PageScript);
+        global[BridgeName] = bridge;
+        return bridge;
     }
 
     /// <summary>
@@ -240,7 +366,7 @@ internal static class ComponentServerRender
     }
 
     /// <summary>
-    /// Reads what <c>renderOutlets</c> answered, each error a failed command caused given what that threw.
+    /// Reads what <c>renderPage</c> answered, each error a failed command caused given what that threw.
     /// </summary>
     /// <param name="json">What it answered.</param>
     /// <param name="outlets">The components it was asked to render.</param>
@@ -255,7 +381,7 @@ internal static class ComponentServerRender
 
         foreach (var outlet in outlets)
             if (read.ContainsKey(outlet.Id) == false)
-                throw new InvalidOperationException($"The server module's renderOutlets said nothing of {outlet.Component} in '{outlet.Id}'.");
+                throw new InvalidOperationException($"The server render said nothing of {outlet.Component} in '{outlet.Id}'.");
 
         foreach (var result in read.Values)
             if (result.Error?.DotnetErrorId is string id && failures.TryGetValue(id, out var exception))

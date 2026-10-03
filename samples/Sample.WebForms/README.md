@@ -21,7 +21,7 @@ Alethic.Node.AspNet.Components. Each page shows one of the ways Web Forms can dr
 - **The client** is `samples/Sample.Client`, which the ASP.NET Core sample shares. The site references its project, and
   building the site builds it and copies its two Web Forms bundles where the skin says they are:
   - `Server/components/client.js`, the browser entry, exporting `outlet` and the components;
-  - `Server/App_Data/components/server.cjs`, the server bundle, exporting `renderOutlets`.
+  - `Server/App_Data/components/server.cjs`, the server bundle, exporting `render`.
 
 ## Running it
 
