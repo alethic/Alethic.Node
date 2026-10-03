@@ -1,9 +1,9 @@
 <Solution>
   <Folder Name="/Solution Items/">
     <File Path=".gitattributes" />
-    <File Path=".github/workflows/Alethic.Node.AspNetCore.yml" />
+    <File Path=".github/workflows/Alethic.Node.yml" />
     <File Path=".gitignore" />
-    <File Path="Alethic.Node.AspNetCore.dist.msbuildproj" />
+    <File Path="Alethic.Node.dist.msbuildproj" />
     <File Path="Directory.Build.props" />
     <File Path="Directory.Build.targets" />
     <File Path="GitVersion.yml" />
