@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFrameworks>net472;net8.0;net9.0</TargetFrameworks>
+        <Description>Serving a JavaScript application over HTTP from Node embedded in a .NET process, whatever the .NET host: the fetch(request, env, ctx) protocol, as Alethic.Node.AspNetCore and Alethic.Node.AspNet both speak it.</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>icon.png</PackageIcon>
+        <PackageTags>javascript;node;libnode;fetch;http;ssr</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="\" />
+        <None Include="..\..\icon.png" Pack="true" PackagePath="\" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Alethic.Node\Alethic.Node.csproj" />
+    </ItemGroup>
+
+</Project>

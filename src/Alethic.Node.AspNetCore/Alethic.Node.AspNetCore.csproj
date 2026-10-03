@@ -22,7 +22,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Alethic.Node\Alethic.Node.csproj" />
+        <ProjectReference Include="..\Alethic.Node.Http\Alethic.Node.Http.csproj" />
     </ItemGroup>
 
     <ItemGroup>

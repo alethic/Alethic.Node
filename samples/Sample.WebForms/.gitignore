@@ -1,4 +1,6 @@
 Server/components/
 Server/App_Data/components/
+Server/App_Data/app/
+Server/app.js
 Server/bin/
 Server/obj/
