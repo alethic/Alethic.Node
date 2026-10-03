@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Web;
 using System.Web.Routing;
 
+using Alethic.Node.Http;
 using Alethic.Node.Tests;
 
 using Microsoft.Extensions.Logging.Abstractions;

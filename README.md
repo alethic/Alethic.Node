@@ -6,12 +6,15 @@ No sidecar process, no HTTP hop.
 **Alethic.Node** is the engines: a pool of libnode runtimes and Node's own modules, for any host, .NET Framework 4.7.2
 included — a console, a service, an ASP.NET Web Forms site. The hosts build on it:
 
+- **Alethic.Node.Http** — serving a JavaScript application's `fetch` handler over HTTP, whatever the .NET host: the
+  protocol both ASP.NET hosts speak, so one application is served unchanged by either.
 - **Alethic.Node.AspNetCore** — server-side rendering for ASP.NET Core: the request handler and the endpoint mapping.
   It was published as Alethic.AspNetCore.Node through 0.3; its types moved from that namespace to
   `Alethic.Node.AspNetCore`, and the engines' to `Alethic.Node`.
 - **Alethic.Node.AspNet** — Node in an ASP.NET (System.Web) application on .NET Framework: the application's pool,
-  Node work done on behalf of a request with the request's thread serving what it asks of the site, and `fetch` of
-  the site answered in process by the site's own handlers.
+  Node work done on behalf of a request with the request's thread serving what it asks of the site, `fetch` of
+  the site answered in process by the site's own handlers, and whole pages from an application's `fetch` handler on
+  System.Web routes.
 - **Alethic.Node.AspNet.Components** — JavaScript components hosted on Web Forms pages: the `Component` control, its props
   from markup and code, its callbacks as server commands, and its server render.
 

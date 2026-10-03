@@ -1,4 +1,4 @@
-namespace Alethic.Node.AspNetCore;
+namespace Alethic.Node.Http;
 
 /// <summary>
 /// How a body crosses between the host and the application.
@@ -21,7 +21,7 @@ public enum BodyMode
     /// Collected whole before it is handed on.
     /// </summary>
     /// <remarks>
-    /// On the way in, a body that has been read once can be read again — a stream cannot, so an
+    /// On the way in, a body that has been read once can be read again, which a stream cannot be, so an
     /// application that clones a request or retries a parse needs this.
     ///
     /// On the way out it buys something the streamed form cannot: nothing is written until the render
@@ -29,7 +29,7 @@ public enum BodyMode
     /// already gone out by then and a fault can only truncate the page; buffered, it becomes an
     /// ordinary error the host can answer properly. The length is known too, so the response carries
     /// one rather than being framed as chunked. The cost is the whole page in memory, and nothing
-    /// reaching the client until all of it exists — which for a render that waits on all its data
+    /// reaching the client until all of it exists, which for a render that waits on all its data
     /// before answering was already true.
     /// </remarks>
     Buffered,

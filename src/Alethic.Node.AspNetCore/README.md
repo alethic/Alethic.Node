@@ -60,7 +60,10 @@ export default {
 ```
 
 This is the handler shape Cloudflare Workers defines and Deno, Bun, and the framework adapters
-targeting them follow. Called with all three arguments:
+targeting them follow. The protocol is Alethic.Node.Http's `FetchProtocol`, which Alethic.Node.AspNet
+speaks as well, so the same application is served on System.Web unchanged. `BodyMode` and the options
+`FetchRequestHandlerOptions` inherits, `BaseUri`, `ResponseBody` and `Environment`, are defined there.
+Called with all three arguments:
 
 - **`request`** — a real `Request`, built on the engine's thread.
 - **`env`** — what only the host knows, from `FetchRequestHandlerOptions.Environment`. Input only:

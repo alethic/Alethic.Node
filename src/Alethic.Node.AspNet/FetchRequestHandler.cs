@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
+
+using Alethic.Node.Http;
 
 using Microsoft.JavaScript.NodeApi;
 
@@ -14,9 +17,9 @@ namespace Alethic.Node.AspNet;
 /// Answers a request with a whole page from the application's <c>fetch</c> handler, on a Node engine.
 /// </summary>
 /// <remarks>
-/// The handler is called as <c>fetch(request, env, ctx)</c>: the application's module exports it as <c>fetch</c> on its
-/// default export, or its default export is the function itself. The request is the runtime's own <c>Request</c>, and
-/// what the handler answers, its <c>Response</c>, is written back as the site's response: status, headers and body.
+/// The handler is called as <c>fetch(request, env, ctx)</c>, in the protocol <see cref="FetchProtocol"/> defines, which
+/// Alethic.Node.AspNetCore's handler speaks as well: the same application is served by either. What the handler
+/// answers, its <c>Response</c>, is written back as the site's response: status, headers and body.
 ///
 /// It runs as a <see cref="NodeRequest"/>, so a <c>fetch</c> of the site the application makes while it renders is
 /// answered in process by the site's own handlers, as the visitor. Each chunk of a streamed body is written by the
@@ -29,35 +32,6 @@ namespace Alethic.Node.AspNet;
 /// </remarks>
 public class FetchRequestHandler : HttpTaskAsyncHandler
 {
-
-    /// <summary>
-    /// The execution context handed to the handler as its third argument.
-    /// </summary>
-    /// <remarks>
-    /// A pooled engine keeps running after the response, so a promise given to <c>waitUntil</c> proceeds whether or not
-    /// anything registers it; all this does is see that its rejection does not go unobserved.
-    /// <c>passThroughOnException</c> does nothing: there is no origin behind this to pass a request to.
-    /// </remarks>
-    const string ContextScript = """
-        ({
-            waitUntil(promise) {
-                Promise.resolve(promise).catch(e =>
-                    console.error('[Alethic.Node.AspNet] waitUntil rejected:', e));
-            },
-            passThroughOnException() { },
-        })
-        """;
-
-    /// <summary>
-    /// Headers saying where the application is mounted, which this writes from the request ASP.NET resolved rather
-    /// than passing on whatever arrived under those names.
-    /// </summary>
-    static readonly string[] MountHeaders = ["X-Forwarded-Proto", "X-Forwarded-Host", "X-Forwarded-Prefix"];
-
-    /// <summary>
-    /// Response headers the server frames itself, whatever the application says about them.
-    /// </summary>
-    static readonly string[] FramingHeaders = ["Content-Length", "Transfer-Encoding"];
 
     readonly NodeEnginePool? _pool;
     readonly Uri _baseUri;
@@ -109,15 +83,23 @@ public class FetchRequestHandler : HttpTaskAsyncHandler
     /// <param name="response">Where the response is written.</param>
     internal async Task ProcessRequestAsync(HttpContext context, HttpResponseBase response)
     {
-        var url = Url(context.Request);
+        // The path below the site's root, under the address the application is asked at, and where the visitor was in
+        // the forwarded headers: the mount is the site's virtual path.
+        var prefix = Prefix(context.Request);
+        var url = FetchProtocol.Url(_baseUri, PathBelow(context.Request.Url.AbsolutePath, prefix), context.Request.Url.Query);
         var method = context.Request.HttpMethod;
-        var headers = CollectHeaders(context.Request);
+        var headers = FetchProtocol.Headers(
+            Flatten(context.Request.Headers),
+            context.Request.Url.Scheme,
+            context.Request.Headers["Host"] ?? context.Request.Url.Authority,
+            prefix);
+
         var body = await ReadBodyAsync(context.Request);
         var disconnected = ClientDisconnected(response);
 
         // Buffered, the body goes here and the head waits beside it; streamed, both are written as they come.
         var buffer = _responseBody == BodyMode.Buffered ? new MemoryStream() : null;
-        ResponseHead? head = null;
+        FetchResponseHead? head = null;
 
         if (buffer is null)
             response.BufferOutput = false;
@@ -125,60 +107,38 @@ public class FetchRequestHandler : HttpTaskAsyncHandler
         var request = new NodeRequest(context);
         await request.RunAsync(_pool ?? AspNetNode.Pool, Module, async exports =>
         {
-            // A bare function as the default export is the fetch handler itself, as createRequestHandler-style
-            // factories produce.
-            var app = NodeModuleExports.Default(exports);
-            var fetch = app.IsFunction() || app.IsNullOrUndefined() ? app : app["fetch"];
-            if (fetch.IsFunction() == false)
-                throw new InvalidOperationException($"Module '{Module.Name}' has no default export with a fetch function.");
+            var fetch = FetchProtocol.Handler(exports, Module.Name, out var app);
 
-            var controller = JSValue.RunScript("new AbortController()");
+            var controller = FetchProtocol.AbortController();
             using var controllerReference = new JSReference(controller, isWeak: false);
 
+            var fetchRequest = FetchProtocol.Request(url, method, headers, controller["signal"], body is null ? null : new JSTypedArray<byte>(body));
+
             // Called as the request, so that a fetch of the site it makes is answered in process.
-            var pending = request.Call(
-                fetch,
-                app.IsFunction() ? JSValue.Undefined : app,
-                BuildRequest(url, method, headers, body, controller["signal"]),
-                BuildEnvironment(),
-                JSValue.RunScript(ContextScript));
+            using var answer = await FetchProtocol.RespondAsync(() =>
+                request.Call(fetch, app, fetchRequest, FetchProtocol.Environment(_environment), FetchProtocol.Context()));
 
-            // Values made above are out of scope after an await; only the references are held across one.
-            var answer = await ((JSPromise)JSValue.Global["Promise"].CallMethod("resolve", pending)).AsTask();
-            var answered = new ResponseHead((int)answer["status"], (string)answer["statusText"], CollectResponseHeaders(answer));
-
-            var stream = answer["body"];
-            using var reader = stream.IsNullOrUndefined() ? null : new JSReference(stream.CallMethod("getReader"), isWeak: false);
+            var answeredHead = FetchProtocol.Head(answer.GetValue());
 
             if (buffer is null)
                 await request.InvokeAsync(() =>
                 {
-                    WriteHead(response, answered);
+                    WriteHead(response, answeredHead);
                     response.Flush();
                     return true;
                 });
             else
-                head = answered;
+                head = answeredHead;
 
-            if (reader is null)
-                return true;
-
-            while (true)
+            // From the reference again: writing the head was an await, which ended the scope of anything made before it.
+            await FetchProtocol.BodyAsync(answer.GetValue(), async bytes =>
             {
-                // The visitor has gone: the render is told, and stops at its next chance.
+                // The visitor has gone: the render is told, and its body cancelled.
                 if (disconnected.IsCancellationRequested)
                 {
                     controllerReference.GetValue().CallMethod("abort", "the request was aborted");
-                    reader.GetValue().CallMethod("cancel").CallMethod("catch", JSValue.CreateFunction("ignore", _ => JSValue.Undefined));
-                    break;
+                    return false;
                 }
-
-                var chunk = await ((JSPromise)reader.GetValue().CallMethod("read")).AsTask();
-                if ((bool)chunk["done"])
-                    break;
-
-                // Copied into .NET memory while still inside the scope that produced it.
-                var bytes = ((JSTypedArray<byte>)chunk["value"]).Span.ToArray();
 
                 if (buffer is not null)
                     buffer.Write(bytes, 0, bytes.Length);
@@ -189,7 +149,9 @@ public class FetchRequestHandler : HttpTaskAsyncHandler
                         response.Flush();
                         return true;
                     });
-            }
+
+                return true;
+            });
 
             return true;
         });
@@ -203,25 +165,6 @@ public class FetchRequestHandler : HttpTaskAsyncHandler
     }
 
     /// <summary>
-    /// The URL the application is asked at: the path below the site's root, under the base address.
-    /// </summary>
-    /// <param name="request">The request.</param>
-    string Url(HttpRequest request)
-    {
-        var path = request.Url.AbsolutePath;
-        var prefix = Prefix(request);
-        if (prefix.Length > 0 && path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && (path.Length == prefix.Length || path[prefix.Length] == '/'))
-            path = path.Length == prefix.Length ? "/" : path.Substring(prefix.Length);
-
-        // Concatenated rather than resolved: the path is rooted, and resolving it would drop the base address's own.
-        return string.Concat(
-            _baseUri.GetLeftPart(UriPartial.Authority),
-            _baseUri.AbsolutePath.TrimEnd('/'),
-            path,
-            request.Url.Query);
-    }
-
-    /// <summary>
     /// Where the site is mounted: its virtual path, or empty at the root.
     /// </summary>
     /// <param name="request">The request.</param>
@@ -231,38 +174,31 @@ public class FetchRequestHandler : HttpTaskAsyncHandler
     }
 
     /// <summary>
-    /// The request's headers, flattened, with where the application is mounted stated afresh.
+    /// A path with the site's virtual path taken off it.
     /// </summary>
-    /// <remarks>
-    /// <c>Host</c> is dropped, the authority the application is asked at being in the URL. The mount headers are
-    /// dropped and written again, so a visitor cannot describe the mount and have it read as the site's word.
-    /// </remarks>
-    /// <param name="request">The request.</param>
-    static List<KeyValuePair<string, string>> CollectHeaders(HttpRequest request)
+    /// <param name="path">The path, as the visitor asked for it.</param>
+    /// <param name="prefix">The site's virtual path, or empty at the root.</param>
+    static string PathBelow(string path, string prefix)
     {
-        var headers = new List<KeyValuePair<string, string>>();
+        if (prefix.Length == 0 || path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) == false)
+            return path;
 
-        foreach (var name in request.Headers.AllKeys)
-        {
-            if (name is null || string.Equals(name, "Host", StringComparison.OrdinalIgnoreCase))
-                continue;
+        if (path.Length == prefix.Length)
+            return "/";
 
-            if (MountHeaders.Contains(name, StringComparer.OrdinalIgnoreCase))
-                continue;
+        return path[prefix.Length] == '/' ? path.Substring(prefix.Length) : path;
+    }
 
-            foreach (var value in request.Headers.GetValues(name) ?? [])
-                headers.Add(new(name, value));
-        }
-
-        headers.Add(new("X-Forwarded-Proto", request.Url.Scheme));
-        headers.Add(new("X-Forwarded-Host", request.Headers["Host"] ?? request.Url.Authority));
-
-        // Absent at the root, as a proxy rewriting no prefix sends it.
-        var prefix = Prefix(request);
-        if (prefix.Length > 0)
-            headers.Add(new("X-Forwarded-Prefix", prefix));
-
-        return headers;
+    /// <summary>
+    /// The request's headers, each value on its own.
+    /// </summary>
+    /// <param name="headers">The headers.</param>
+    static IEnumerable<KeyValuePair<string, string?>> Flatten(NameValueCollection headers)
+    {
+        foreach (var name in headers.AllKeys)
+            if (name is not null)
+                foreach (var value in headers.GetValues(name) ?? [])
+                    yield return new KeyValuePair<string, string?>(name, value);
     }
 
     /// <summary>
@@ -296,91 +232,24 @@ public class FetchRequestHandler : HttpTaskAsyncHandler
     }
 
     /// <summary>
-    /// Builds the environment object the handler receives. On the engine's thread.
-    /// </summary>
-    JSValue BuildEnvironment()
-    {
-        var env = JSValue.CreateObject();
-        foreach (var pair in _environment)
-            env[pair.Key] = pair.Value;
-
-        return env;
-    }
-
-    /// <summary>
-    /// Builds the runtime's own <c>Request</c>. On the engine's thread.
-    /// </summary>
-    /// <param name="url">The URL.</param>
-    /// <param name="method">The method.</param>
-    /// <param name="headers">The headers.</param>
-    /// <param name="body">The body, where there is one.</param>
-    /// <param name="signal">Aborts it.</param>
-    static JSValue BuildRequest(string url, string method, List<KeyValuePair<string, string>> headers, byte[]? body, JSValue signal)
-    {
-        var init = JSValue.CreateObject();
-        init["method"] = method;
-        init["signal"] = signal;
-
-        // Headers in fetch's pair form: an array of [name, value] arrays.
-        var pairs = JSValue.CreateArray(headers.Count);
-        for (var i = 0; i < headers.Count; i++)
-        {
-            var pair = JSValue.CreateArray(2);
-            pair[0] = headers[i].Key;
-            pair[1] = headers[i].Value;
-            pairs[i] = pair;
-        }
-
-        init["headers"] = pairs;
-
-        if (body is not null)
-            init["body"] = new JSTypedArray<byte>(body);
-
-        return JSValue.Global["Request"].CallAsConstructor(url, init);
-    }
-
-    /// <summary>
-    /// Reads the response's headers out through their own iterator. On the engine's thread.
-    /// </summary>
-    /// <param name="response">The response.</param>
-    static List<KeyValuePair<string, string>> CollectResponseHeaders(JSValue response)
-    {
-        var headers = new List<KeyValuePair<string, string>>();
-        var entries = response["headers"].CallMethod("entries");
-
-        while (true)
-        {
-            var step = entries.CallMethod("next");
-            if ((bool)step["done"])
-                break;
-
-            var pair = step["value"];
-            headers.Add(new((string)pair[0], (string)pair[1]));
-        }
-
-        return headers;
-    }
-
-    /// <summary>
     /// Writes the status and headers the application answered with.
     /// </summary>
     /// <remarks>
     /// IIS is told not to put its own error page in place of the application's: a 404 the application rendered is
-    /// the page the visitor should see. The framing headers are dropped, the body's length and coding being the
-    /// server's to state.
+    /// the page the visitor should see. The framing headers are left out.
     /// </remarks>
     /// <param name="response">The response.</param>
     /// <param name="head">What the application answered with.</param>
-    static void WriteHead(HttpResponseBase response, ResponseHead head)
+    static void WriteHead(HttpResponseBase response, FetchResponseHead head)
     {
         response.TrySkipIisCustomErrors = true;
         response.StatusCode = head.Status;
-        if (string.IsNullOrEmpty(head.StatusText) == false)
+        if (head.StatusText.Length > 0)
             response.StatusDescription = head.StatusText;
 
         foreach (var header in head.Headers)
         {
-            if (FramingHeaders.Contains(header.Key, StringComparer.OrdinalIgnoreCase))
+            if (FetchProtocol.IsFramingHeader(header.Key))
                 continue;
 
             if (string.Equals(header.Key, "Content-Type", StringComparison.OrdinalIgnoreCase))
@@ -411,32 +280,6 @@ public class FetchRequestHandler : HttpTaskAsyncHandler
 
         response.ContentType = string.Join(";", parts.Where(i => i.Trim().StartsWith("charset=", StringComparison.OrdinalIgnoreCase) == false)).Trim();
         response.Charset = charset.Substring("charset=".Length).Trim('"');
-    }
-
-    /// <summary>
-    /// The part of a response known before its body has arrived.
-    /// </summary>
-    /// <param name="status">The status.</param>
-    /// <param name="statusText">The status's text.</param>
-    /// <param name="headers">The headers.</param>
-    sealed class ResponseHead(int status, string statusText, List<KeyValuePair<string, string>> headers)
-    {
-
-        /// <summary>
-        /// The status.
-        /// </summary>
-        public int Status { get; } = status;
-
-        /// <summary>
-        /// The status's text.
-        /// </summary>
-        public string StatusText { get; } = statusText;
-
-        /// <summary>
-        /// The headers.
-        /// </summary>
-        public List<KeyValuePair<string, string>> Headers { get; } = headers;
-
     }
 
 }

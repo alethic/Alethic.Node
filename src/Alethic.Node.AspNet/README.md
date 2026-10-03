@@ -96,7 +96,8 @@ protected void Application_Start(object sender, EventArgs e)
 ```
 
 The module is a self-contained CommonJS bundle. Its default export has a `fetch` function, or is the function itself,
-and it is called as `fetch(request, env, ctx)`:
+and it is called as `fetch(request, env, ctx)`, in the protocol of Alethic.Node.Http, which Alethic.Node.AspNetCore
+speaks as well: the same application is served by either.
 - **`request`** is the runtime's own `Request`. Its URL is the path below the site's root under `BaseUri`
   (`http://node.invalid/` unless set), not where the visitor was: `X-Forwarded-Proto`, `X-Forwarded-Host` and, for a
   site below the root, `X-Forwarded-Prefix` say that. Its body is read whole first, as ASP.NET reads it.
