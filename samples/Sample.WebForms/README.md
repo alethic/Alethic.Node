@@ -1,6 +1,6 @@
 # Sample.WebForms
 
-An ASP.NET Web Forms site (.NET Framework 4.8) that hosts React components with `NodeComponent` from
+An ASP.NET Web Forms site (.NET Framework 4.8) that hosts React components with the `Component` control from
 Alethic.Node.AspNet.Components. Each page shows one of the ways Web Forms can drive a component.
 
 | Page | What it shows |
@@ -15,26 +15,24 @@ Alethic.Node.AspNet.Components. Each page shows one of the ways Web Forms can dr
 
 ## Layout
 
-- **`Client`** is the React client. `npm run build` writes the two bundles where `NodeComponent` looks by default:
+- **`Server`** is the site. It is an SDK-style project whose code-behind compiles to `bin\`, beside the pages.
+  Cogito.AspNet.MSBuild writes the binding redirects into `Web.config`. Nothing is configured for the components: every
+  default fits.
+- **The client** is `samples/Sample.Client`, which the ASP.NET Core sample shares. The site references its project, and
+  building the site builds it and copies its two Web Forms bundles where `Component` looks by default:
   - `Server/components/client.js`, the browser entry, exporting `outlet` and the components;
   - `Server/App_Data/components/server.cjs`, the server bundle, exporting `renderOutlets`.
 
-  `src/outlets.tsx` places every component in one root through portals, and `src/render.tsx` renders a page's
-  components with React's `prerender`. Both follow the contract in Alethic.Node.AspNet.Components' README.
-- **`Server`** is the site. It is an SDK-style project whose code-behind compiles to `bin\`, beside the pages. Building it
-  builds the client first (`/p:BuildClient=false` skips that). Cogito.AspNet.MSBuild writes the binding redirects into
-  `Web.config`. Nothing is configured for the components: every default fits.
-
 ## Running it
 
-Build the site, then serve its folder with IIS Express, 64-bit since libnode is:
+Run the project, which serves the site's folder with 64-bit IIS Express, as libnode is, on port 8090:
 
 ```bat
-dotnet build samples\Sample.WebForms\Server
-"C:\Program Files\IIS Express\iisexpress.exe" /path:%CD%\samples\Sample.WebForms\Server /port:8090
+dotnet run --project samples\Sample.WebForms\Server
 ```
 
-and open `http://localhost:8090/`.
+From Visual Studio, start it as any project. Then open `http://localhost:8090/`. Pass `-p:IISExpressPort=…` for another
+port.
 
 Node starts once per process. Rebuilding the site makes ASP.NET start it again in a new AppDomain of the same process,
 where Node cannot start, so restart IIS Express after each build.

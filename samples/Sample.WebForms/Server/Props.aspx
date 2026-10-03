@@ -10,7 +10,7 @@
     <h2>Declared in markup</h2>
     <p>Text is a string unless <code>Type</code> says otherwise. Nested props make an object where they have names, and an
         array where they have none.</p>
-    <node:NodeComponent ID="Declared" runat="server" Component="PropsView" OnCommand="Any_Command">
+    <node:Component ID="Declared" runat="server" Name="PropsView" OnCommand="Any_Command">
         <node:ComponentProp Name="title" Value="Pipettes" />
         <node:ComponentProp Name="limit" Value="25" Type="Number" />
         <node:ComponentProp Name="ratio" Value="0.75" Type="Number" />
@@ -39,24 +39,24 @@
             </node:ComponentProp>
         </node:ComponentProp>
         <node:ComponentCallback Name="onPing" CommandName="Ping" />
-    </node:NodeComponent>
+    </node:Component>
 
     <h2>Bound</h2>
     <p>A data-binding expression keeps its value's own type: a number, a date, a list, an object.</p>
-    <node:NodeComponent ID="Bound" runat="server" Component="PropsView" OnCommand="Any_Command">
+    <node:Component ID="Bound" runat="server" Name="PropsView" OnCommand="Any_Command">
         <node:ComponentProp Name="lines" Value='<%# Order.Lines %>' />
         <node:ComponentProp Name="total" Value='<%# Order.Total %>' />
         <node:ComponentProp Name="placed" Value='<%# Order.Placed %>' />
         <node:ComponentProp Name="tags" Value='<%# Order.Tags %>' />
         <node:ComponentProp Name="shipTo" Value='<%# Order.ShipTo %>' />
         <node:ComponentProp Name="totalAsText" Value='<%# Order.Total %>' Type="String" />
-    </node:NodeComponent>
+    </node:Component>
 
     <h2>Changed from code</h2>
     <p>Props code changed are kept in view state, so they last across postbacks as any control's properties do.</p>
-    <node:NodeComponent ID="FromCode" runat="server" Component="PropsView" OnCommand="Any_Command">
+    <node:Component ID="FromCode" runat="server" Name="PropsView" OnCommand="Any_Command">
         <node:ComponentProp Name="clicks" Value="0" Type="Number" />
-    </node:NodeComponent>
+    </node:Component>
     <asp:Button ID="Click" runat="server" Text="Count a click, from code" OnClick="Click_Click" />
 
     <h2>What the page heard</h2>

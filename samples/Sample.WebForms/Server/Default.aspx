@@ -5,7 +5,7 @@
 
     <h1>Node components on Web Forms</h1>
     <p>
-        Each page hosts components of a React client with <code>NodeComponent</code>, rendered first on the server, on Node
+        Each page hosts components of a React client with the <code>Component</code> control, rendered first on the server, on Node
         inside the worker process, and then in the browser.
     </p>
 
@@ -22,8 +22,8 @@
     <p>One prop, and a callback the page answers. The page has a <code>ScriptManager</code>, so the command posts back
         partially and its answer comes back to the component.</p>
 
-    <node:NodeComponent ID="Hello" runat="server" Component="Greeting" OnCommand="Hello_Command">
+    <node:Component ID="Hello" runat="server" Name="Greeting" OnCommand="Hello_Command">
         <node:ComponentProp Name="name" Value="Ada" />
         <node:ComponentCallback Name="onGreet" CommandName="Greet" />
-    </node:NodeComponent>
+    </node:Component>
 </asp:Content>

@@ -11,7 +11,7 @@ public partial class PartialPage
     /// <summary>
     /// The component inside it.
     /// </summary>
-    protected global::Alethic.Node.AspNet.Components.NodeComponent Inside = null!;
+    protected global::Alethic.Node.AspNet.Components.Component Inside = null!;
 
     /// <summary>
     /// The button that posts it back.
@@ -36,6 +36,6 @@ public partial class PartialPage
     /// <summary>
     /// The component outside it.
     /// </summary>
-    protected global::Alethic.Node.AspNet.Components.NodeComponent Outside = null!;
+    protected global::Alethic.Node.AspNet.Components.Component Outside = null!;
 
 }

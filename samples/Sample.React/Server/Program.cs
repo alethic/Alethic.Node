@@ -25,7 +25,8 @@ app.UseRouting();
 // only reading its routes is specific to this application. Naming the same module is all the
 // sharing they need — Node loads it once per engine and both see that one instance.
 var pool = app.Services.GetRequiredService<NodeEnginePool>();
-var source = NodeModuleSource.FromFile(Path.Combine(app.Environment.ContentRootPath, "..", "Client", "dist", "server", "app.cjs"));
+// The shared client's ssr bundle, which the build copies beside the application.
+var source = NodeModuleSource.FromFile(Path.Combine(AppContext.BaseDirectory, "ssr", "app.cjs"));
 
 var handler = new FetchRequestHandler(pool, new FetchRequestHandlerOptions() { Module = source });
 

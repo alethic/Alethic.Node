@@ -11,19 +11,19 @@
     </p>
 
     <h2>A fetch of the site</h2>
-    <node:NodeComponent ID="Clock" runat="server" Component="ServerTime" />
+    <node:Component ID="Clock" runat="server" Name="ServerTime" />
 
     <h2>A command answered at once</h2>
-    <node:NodeComponent ID="Quick" runat="server" Component="Greeting" OnCommand="Quick_Command">
+    <node:Component ID="Quick" runat="server" Name="Greeting" OnCommand="Quick_Command">
         <node:ComponentProp Name="name" Value="Ada" />
         <node:ComponentCallback Name="onGreet" CommandName="Greet" />
-    </node:NodeComponent>
+    </node:Component>
 
     <h2>A command answered asynchronously</h2>
     <p>The handler answers with a task, which a page that is not asynchronous cannot wait for: the command fails, and the
         component is told why.</p>
-    <node:NodeComponent ID="Slow" runat="server" Component="Greeting" OnCommand="Slow_Command">
+    <node:Component ID="Slow" runat="server" Name="Greeting" OnCommand="Slow_Command">
         <node:ComponentProp Name="name" Value="Grace" />
         <node:ComponentCallback Name="onGreet" CommandName="Greet" />
-    </node:NodeComponent>
+    </node:Component>
 </asp:Content>

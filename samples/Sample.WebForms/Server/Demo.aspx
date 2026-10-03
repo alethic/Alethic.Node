@@ -22,10 +22,10 @@
             <div class="grid">
                 <asp:Repeater ID="Products" runat="server" OnItemCommand="Products_ItemCommand">
                     <ItemTemplate>
-                        <node:NodeComponent runat="server" Component="ProductCard" OnCommand="Product_Command">
+                        <node:Component runat="server" Name="Catalog.ProductCard" OnCommand="Product_Command">
                             <node:ComponentProp Name="product" Value='<%# Container.DataItem %>' />
                             <node:ComponentCallback Name="onAdd" CommandName="Add" />
-                        </node:NodeComponent>
+                        </node:Component>
                     </ItemTemplate>
                 </asp:Repeater>
             </div>

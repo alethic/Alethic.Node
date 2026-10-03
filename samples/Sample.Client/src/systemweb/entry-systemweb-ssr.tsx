@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
-import * as components from "./components";
-import { Providers } from "./providers";
+import * as components from "../components";
+import { Providers } from "../providers";
 import { createRenderOutlets } from "./render";
 
 /**

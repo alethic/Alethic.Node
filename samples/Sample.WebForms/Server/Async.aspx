@@ -14,12 +14,12 @@
         The component fetches <code>/Time.ashx</code>. On the server the fetch is answered in process, as you, with your
         session; reload and the visit count goes up, the same as when the browser asks.
     </p>
-    <node:NodeComponent ID="Clock" runat="server" Component="ServerTime" />
+    <node:Component ID="Clock" runat="server" Name="ServerTime" />
 
     <h2>A command answered asynchronously</h2>
     <p>The handler awaits before it answers; the component's promise waits for it.</p>
-    <node:NodeComponent ID="Slow" runat="server" Component="Greeting" OnCommand="Slow_Command">
+    <node:Component ID="Slow" runat="server" Name="Greeting" OnCommand="Slow_Command">
         <node:ComponentProp Name="name" Value="Grace" />
         <node:ComponentCallback Name="onGreet" CommandName="Greet" />
-    </node:NodeComponent>
+    </node:Component>
 </asp:Content>

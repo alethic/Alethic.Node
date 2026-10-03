@@ -11,7 +11,7 @@ public partial class Site
     /// <summary>
     /// The cart's badge.
     /// </summary>
-    protected global::Alethic.Node.AspNet.Components.NodeComponent Badge = null!;
+    protected global::Alethic.Node.AspNet.Components.Component Badge = null!;
 
     /// <summary>
     /// Where each page's content goes.

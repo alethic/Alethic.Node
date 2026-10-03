@@ -2,7 +2,8 @@
 
     <!--
         A Web Forms site, as an SDK-style project: the code-behind compiles to bin\, beside the pages, which is all IIS
-        needs. Cogito.AspNet.MSBuild writes the binding redirects into Web.config on each build.
+        needs. Cogito.AspNet.MSBuild writes the binding redirects into Web.config on each build. Running the project,
+        with dotnet run or from Visual Studio, serves the site's folder with IIS Express.
     -->
 
     <PropertyGroup>
@@ -15,7 +16,13 @@
         <GenerateDocumentationFile>false</GenerateDocumentationFile>
         <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
         <IsWebApplicationProject>true</IsWebApplicationProject>
-        <BuildClient Condition=" '$(BuildClient)' == '' ">true</BuildClient>
+    </PropertyGroup>
+
+    <PropertyGroup Label="Running: IIS Express, 64-bit, as libnode is, on the site's folder.">
+        <IISExpressPort Condition=" '$(IISExpressPort)' == '' ">8090</IISExpressPort>
+        <RunCommand>$(ProgramW6432)\IIS Express\iisexpress.exe</RunCommand>
+        <RunArguments>/path:"$(MSBuildProjectDirectory)" /port:$(IISExpressPort) /clr:v4.0</RunArguments>
+        <RunWorkingDirectory>$(MSBuildProjectDirectory)</RunWorkingDirectory>
     </PropertyGroup>
 
     <ItemGroup>
@@ -33,15 +40,21 @@
         <ProjectReference Include="..\..\..\src\Alethic.Node.AspNet.Components\Alethic.Node.AspNet.Components.csproj" />
     </ItemGroup>
 
-    <!-- The client, built to the paths NodeComponent looks in by default. Pass /p:BuildClient=false to skip it. -->
-    <Target Name="BuildClient" BeforeTargets="BeforeBuild" Condition=" '$(BuildClient)' == 'true' "
-            Inputs="@(ClientSource);..\Client\build.mjs;..\Client\package.json" Outputs="components\client.js;App_Data\components\server.cjs">
-        <Exec Command="npm ci --no-audit --no-fund" WorkingDirectory="..\Client" Condition=" !Exists('..\Client\node_modules') " />
-        <Exec Command="npm run build" WorkingDirectory="..\Client" />
-    </Target>
-
+    <!-- The shared client, Sample.Client: its systemweb and systemweb-ssr bundles are this sample's. -->
     <ItemGroup>
-        <ClientSource Include="..\Client\src\**\*" />
+        <ProjectReference Include="..\..\Sample.Client\Sample.Client.esproj">
+            <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+            <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
+        </ProjectReference>
     </ItemGroup>
+
+    <!--
+        Copied into the site's own folder, which is what IIS serves, at the paths the components look in by default: the
+        browser entry where it is served, the server bundle under App_Data, where nothing is.
+    -->
+    <Target Name="CopyClientBundles" AfterTargets="ResolveProjectReferences">
+        <Copy SourceFiles="..\..\Sample.Client\dist\systemweb\client.js" DestinationFolder="components" SkipUnchangedFiles="true" />
+        <Copy SourceFiles="..\..\Sample.Client\dist\systemweb-ssr\server.cjs" DestinationFolder="App_Data\components" SkipUnchangedFiles="true" />
+    </Target>
 
 </Project>

@@ -22,7 +22,7 @@
             </nav>
             <%-- On every page, outside any UpdatePanel: its count comes from code, and on the demo from the page's
                  shared context as products are added. --%>
-            <node:NodeComponent ID="Badge" runat="server" Component="CartBadge" />
+            <node:Component ID="Badge" runat="server" Name="Catalog.CartBadge" />
         </header>
         <main>
             <asp:ContentPlaceHolder ID="Main" runat="server" />

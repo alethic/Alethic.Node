@@ -14,7 +14,7 @@
         <li><a href="?mode=await">await</a>: it calls the same command and waits for its answer.</li>
     </ul>
 
-    <node:NodeComponent ID="Failing" runat="server" Component="Failing" OnCommand="Failing_Command">
+    <node:Component ID="Failing" runat="server" Name="Failing" OnCommand="Failing_Command">
         <node:ComponentCallback Name="onFail" CommandName="Fail" />
-    </node:NodeComponent>
+    </node:Component>
 </asp:Content>

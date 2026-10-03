@@ -17,10 +17,10 @@
     </p>
     <asp:UpdatePanel ID="Panel" runat="server">
         <ContentTemplate>
-            <node:NodeComponent ID="Inside" runat="server" Component="Counter" OnCommand="Inside_Command">
+            <node:Component ID="Inside" runat="server" Name="Counter" OnCommand="Inside_Command">
                 <node:ComponentProp Name="label" Value="Inside the panel" />
                 <node:ComponentCallback Name="onReport" CommandName="Report" />
-            </node:NodeComponent>
+            </node:Component>
             <asp:Button ID="Refresh" runat="server" Text="Partial postback" OnClick="Refresh_Click" />
             <p class="log">
                 The panel rendered at <asp:Literal ID="PanelTime" runat="server" />, after <asp:Literal ID="PostbackCount" runat="server" /> postbacks.
@@ -34,8 +34,8 @@
         The panel's postbacks leave this component alone, so it keeps its own count, and the page's count it was given
         stays as it was. Its own commands post back partially too, and their answers come back to it.
     </p>
-    <node:NodeComponent ID="Outside" runat="server" Component="Counter" OnCommand="Outside_Command">
+    <node:Component ID="Outside" runat="server" Name="Counter" OnCommand="Outside_Command">
         <node:ComponentProp Name="label" Value="Outside the panel" />
         <node:ComponentCallback Name="onReport" CommandName="Report" />
-    </node:NodeComponent>
+    </node:Component>
 </asp:Content>

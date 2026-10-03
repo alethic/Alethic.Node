@@ -1,5 +1,6 @@
 import { ComponentType, ReactNode } from "react";
 import { prerender } from "react-dom/static";
+import { resolve } from "./resolve";
 
 /**
  * The server's half: renders a Web Forms page's components to HTML on Node embedded in the worker
@@ -7,7 +8,7 @@ import { prerender } from "react-dom/static";
  * running it, search engines first.
  *
  * The server bundle exports the `renderOutlets` this makes, built to one self-contained CommonJS file,
- * since the embedded engine resolves nothing but Node's built-ins. `NodeComponent` calls it once per
+ * since the embedded engine resolves nothing but Node's built-ins. `Component` calls it once per
  * page with every component on it, as the page's request: a `fetch` of the site is answered in
  * process, as the visitor, and each callback in the props raises its command on the page.
  *
@@ -160,10 +161,10 @@ function turn() {
 
 /**
  * Makes the `renderOutlets` a server bundle exports.
- * @param components the components a page may place, by the name it asks for them with
+ * @param components the components a page may place, by name or by a dotted path
  * @param options how they are rendered
  */
-export function createRenderOutlets(components: Record<string, unknown>, options: RenderOptions = {}): RenderOutlets {
+export function createRenderOutlets(components: object, options: RenderOptions = {}): RenderOutlets {
     listen();
 
     return async requests => {
@@ -172,9 +173,9 @@ export function createRenderOutlets(components: Record<string, unknown>, options
         const rendered: Record<string, Rendered> = {};
 
         for (const request of requests) {
-            const Placed = components[request.component] as ComponentType<object> | undefined;
-            if (typeof Placed !== "function" && (typeof Placed !== "object" || Placed === null)) {
-                rendered[request.id] = { error: { message: `The React client exports no component named ${request.component}.` } };
+            const Placed = resolve(components, request.component);
+            if (Placed === undefined) {
+                rendered[request.id] = { error: { message: `The client has no component ${request.component}.` } };
                 continue;
             }
 
