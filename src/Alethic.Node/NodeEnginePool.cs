@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace Alethic.AspNetCore.Node;
+namespace Alethic.Node;
 
 /// <summary>
 /// A pool of embedded Node engines.
@@ -74,7 +74,8 @@ public sealed class NodeEnginePool : IAsyncDisposable
     /// <exception cref="TimeoutException"></exception>
     public async Task<NodeEngineLease> AcquireAsync(CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
+        if (disposed)
+            throw new ObjectDisposedException(GetType().Name);
 
         if (await capacity.WaitAsync(options.AcquireTimeout, cancellationToken) == false)
             throw new TimeoutException($"No capacity in the Node engine pool within {options.AcquireTimeout}.");
@@ -182,7 +183,8 @@ public sealed class NodeEnginePool : IAsyncDisposable
     /// <param name="cancellationToken"></param>
     public async Task PrepareAsync(Func<NodeEngineLease, Task>? warm = null, CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
+        if (disposed)
+            throw new ObjectDisposedException(GetType().Name);
 
         while (Count < options.EngineCount)
             if (await GrowAsync(cancellationToken) is null)

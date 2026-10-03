@@ -2,6 +2,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Http;
+using Alethic.Node;
 
 namespace Alethic.AspNetCore.Node;
 

@@ -87,6 +87,7 @@ jobs:
       fail-fast: false
       matrix:
         run:
+        - Alethic.Node.Tests
         - Alethic.AspNetCore.Node.Tests
         sys:
         - win-x64
@@ -97,6 +98,11 @@ jobs:
         tfm:
         - net8.0
         - net9.0
+        # .NET Framework runs on Windows alone, and only the engines target it.
+        include:
+        - run: Alethic.Node.Tests
+          sys: win-x64
+          tfm: net472
     name: Test (${{ matrix.run }}:${{ matrix.tfm }}:${{ matrix.sys }})
     needs:
     - build
@@ -140,8 +146,22 @@ jobs:
             $tst = $run
         }
 
-        # scan and process test assemblies
-        $tests = $(gi .\tests\$tst\$tfm\*.Tests.dll)
+        # scan and process test assemblies; on .NET Framework the suite is an executable of its own
+        $tests = $(gi .\tests\$tst\$tfm\*.Tests.dll -ErrorAction SilentlyContinue)
+        $exe = $(gi .\tests\$tst\$tfm\*.Tests.exe -ErrorAction SilentlyContinue)
+        if (-not $tests -and $exe) {
+            $argl = @("--results-directory", "TestResults", "--report-trx")
+            if ($qry -ne "" -and $qry -ne $null) {
+                $argl += @("--filter", $qry)
+                Add-Content $env:GITHUB_ENV "`nRET=TestResults--$tst-$qry--$tfm--$sys"
+            } else {
+                Add-Content $env:GITHUB_ENV "`nRET=TestResults--$tst--$tfm--$sys"
+            }
+
+            & $exe[0].FullName @argl
+            exit $LASTEXITCODE
+        }
+
         if ($tests) {
             $argl = @(
                 "-f", $tfm,

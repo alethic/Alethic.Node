@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.JavaScript.NodeApi;
 using Microsoft.JavaScript.NodeApi.Runtime;
 
-namespace Alethic.AspNetCore.Node;
+namespace Alethic.Node;
 
 /// <summary>
 /// One embedded Node runtime on its own thread.
@@ -124,8 +124,10 @@ sealed class NodeEngine : IAsyncDisposable
     /// <param name="logger"></param>
     public NodeEngine(NodeEmbeddingPlatform platform, string baseDirectory, ILogger logger)
     {
-        ArgumentNullException.ThrowIfNull(platform);
-        ArgumentNullException.ThrowIfNull(baseDirectory);
+        if (platform is null)
+            throw new ArgumentNullException(nameof(platform));
+        if (baseDirectory is null)
+            throw new ArgumentNullException(nameof(baseDirectory));
         this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         runtime = platform.CreateThreadRuntime(baseDirectory, new NodeEmbeddingRuntimeSettings()
@@ -168,9 +170,12 @@ sealed class NodeEngine : IAsyncDisposable
     /// <param name="cancellationToken"></param>
     public async Task<T> RunAsync<T>(NodeModuleSource source, Func<JSValue, Task<T>> work, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(work);
-        ObjectDisposedException.ThrowIf(disposed, this);
+        if (source is null)
+            throw new ArgumentNullException(nameof(source));
+        if (work is null)
+            throw new ArgumentNullException(nameof(work));
+        if (disposed)
+            throw new ObjectDisposedException(GetType().Name);
 
         var path = await ResolveAsync(source, cancellationToken);
         return await runtime.RunAsync(() => work(Require(path)));
@@ -184,9 +189,12 @@ sealed class NodeEngine : IAsyncDisposable
     /// <param name="work"></param>
     public T Run<T>(NodeModuleSource source, Func<JSValue, T> work)
     {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(work);
-        ObjectDisposedException.ThrowIf(disposed, this);
+        if (source is null)
+            throw new ArgumentNullException(nameof(source));
+        if (work is null)
+            throw new ArgumentNullException(nameof(work));
+        if (disposed)
+            throw new ObjectDisposedException(GetType().Name);
 
         var path = ResolveAsync(source, CancellationToken.None).GetAwaiter().GetResult();
         return runtime.Run(() => work(Require(path)));
@@ -200,8 +208,10 @@ sealed class NodeEngine : IAsyncDisposable
     /// <param name="cancellationToken"></param>
     public async Task ImportAsync(NodeModuleSource source, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(source);
-        ObjectDisposedException.ThrowIf(disposed, this);
+        if (source is null)
+            throw new ArgumentNullException(nameof(source));
+        if (disposed)
+            throw new ObjectDisposedException(GetType().Name);
 
         var path = await ResolveAsync(source, cancellationToken);
         runtime.Run(() => Require(path).IsObject());
@@ -266,12 +276,12 @@ sealed class NodeEngine : IAsyncDisposable
     public ValueTask DisposeAsync()
     {
         if (disposed)
-            return ValueTask.CompletedTask;
+            return default;
 
         disposed = true;
         Release();
         runtime.Dispose();
-        return ValueTask.CompletedTask;
+        return default;
     }
 
     /// <summary>

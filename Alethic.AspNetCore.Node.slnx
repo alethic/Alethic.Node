@@ -13,6 +13,8 @@
     <File Path="README.md" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/Alethic.Node/Alethic.Node.csproj" />
+    <Project Path="src/Alethic.Node.Tests/Alethic.Node.Tests.csproj" />
     <Project Path="src/Alethic.AspNetCore.Node/Alethic.AspNetCore.Node.csproj" />
     <Project Path="src/Alethic.AspNetCore.Node.Tests/Alethic.AspNetCore.Node.Tests.csproj" />
   </Folder>

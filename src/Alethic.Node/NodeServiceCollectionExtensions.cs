@@ -1,6 +1,6 @@
 using System;
 
-using Alethic.AspNetCore.Node;
+using Alethic.Node;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -40,7 +40,8 @@ public static class NodeServiceCollectionExtensions
     /// <param name="configure"></param>
     public static IServiceCollection AddNodeEnginePool(this IServiceCollection services, object? serviceKey, Action<NodeEnginePoolOptions>? configure = null)
     {
-        ArgumentNullException.ThrowIfNull(services);
+        if (services is null)
+            throw new ArgumentNullException(nameof(services));
 
         services.AddOptions();
         services.AddLogging();

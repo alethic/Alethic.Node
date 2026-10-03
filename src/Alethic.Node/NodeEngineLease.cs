@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 using Microsoft.JavaScript.NodeApi;
 
-namespace Alethic.AspNetCore.Node;
+namespace Alethic.Node;
 
 /// <summary>
 /// A claim on one engine's capacity, and the way onto its thread.
@@ -57,7 +57,8 @@ public sealed class NodeEngineLease : IDisposable, IAsyncDisposable
     /// <param name="work"></param>
     public Task<T> RunAsync<T>(Func<Task<T>> work)
     {
-        ArgumentNullException.ThrowIfNull(work);
+        if (work is null)
+            throw new ArgumentNullException(nameof(work));
 
         return engine.Runtime.RunAsync(work);
     }
@@ -76,8 +77,10 @@ public sealed class NodeEngineLease : IDisposable, IAsyncDisposable
     /// <param name="cancellationToken"></param>
     public async Task<T> RunAsync<T>(NodeModuleSource module, Func<JSValue, Task<T>> work, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(module);
-        ArgumentNullException.ThrowIfNull(work);
+        if (module is null)
+            throw new ArgumentNullException(nameof(module));
+        if (work is null)
+            throw new ArgumentNullException(nameof(work));
 
         return await engine.RunAsync(module, work, cancellationToken);
     }
@@ -94,7 +97,8 @@ public sealed class NodeEngineLease : IDisposable, IAsyncDisposable
     /// <param name="work"></param>
     public T Run<T>(Func<T> work)
     {
-        ArgumentNullException.ThrowIfNull(work);
+        if (work is null)
+            throw new ArgumentNullException(nameof(work));
 
         return engine.Runtime.Run(work);
     }
@@ -112,8 +116,10 @@ public sealed class NodeEngineLease : IDisposable, IAsyncDisposable
     /// <param name="work"></param>
     public T Run<T>(NodeModuleSource module, Func<JSValue, T> work)
     {
-        ArgumentNullException.ThrowIfNull(module);
-        ArgumentNullException.ThrowIfNull(work);
+        if (module is null)
+            throw new ArgumentNullException(nameof(module));
+        if (work is null)
+            throw new ArgumentNullException(nameof(work));
 
         return engine.Run(module, work);
     }
@@ -125,7 +131,8 @@ public sealed class NodeEngineLease : IDisposable, IAsyncDisposable
     /// <param name="cancellationToken"></param>
     public Task ImportAsync(NodeModuleSource module, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(module);
+        if (module is null)
+            throw new ArgumentNullException(nameof(module));
 
         return engine.ImportAsync(module, cancellationToken);
     }
@@ -136,7 +143,8 @@ public sealed class NodeEngineLease : IDisposable, IAsyncDisposable
     /// <param name="module"></param>
     public void Import(NodeModuleSource module)
     {
-        ArgumentNullException.ThrowIfNull(module);
+        if (module is null)
+            throw new ArgumentNullException(nameof(module));
 
         engine.ImportAsync(module, CancellationToken.None).GetAwaiter().GetResult();
     }
@@ -147,7 +155,8 @@ public sealed class NodeEngineLease : IDisposable, IAsyncDisposable
     /// <param name="action"></param>
     public void TryPost(Action action)
     {
-        ArgumentNullException.ThrowIfNull(action);
+        if (action is null)
+            throw new ArgumentNullException(nameof(action));
 
         engine.TryPost(action);
     }
@@ -165,7 +174,7 @@ public sealed class NodeEngineLease : IDisposable, IAsyncDisposable
     public ValueTask DisposeAsync()
     {
         Dispose();
-        return ValueTask.CompletedTask;
+        return default;
     }
 
 }

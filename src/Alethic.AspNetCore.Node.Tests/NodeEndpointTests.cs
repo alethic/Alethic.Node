@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Alethic.AspNetCore.Node;
+using Alethic.Node;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;

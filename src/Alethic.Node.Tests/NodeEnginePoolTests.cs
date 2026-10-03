@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.JavaScript.NodeApi;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace Alethic.AspNetCore.Node.Tests;
+namespace Alethic.Node.Tests;
 
 /// <summary>
 /// Exercises the pool as what it is: a concrete facility for running JavaScript, with ordinary

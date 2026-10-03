@@ -3,7 +3,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Alethic.AspNetCore.Node;
+namespace Alethic.Node;
 
 /// <summary>
 /// A JavaScript module, identified by where it lives on disk.

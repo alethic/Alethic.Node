@@ -1,6 +1,6 @@
 using Microsoft.JavaScript.NodeApi;
 
-namespace Alethic.AspNetCore.Node;
+namespace Alethic.Node;
 
 /// <summary>
 /// Reading a CommonJS module's exports.

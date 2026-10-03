@@ -6,6 +6,10 @@ Server-side rendering for ASP.NET Core on a real Node runtime embedded in the .N
 It is libnode, and the package says so. There is no runtime abstraction here and no pretence that
 another one could be dropped in underneath.
 
+The engines are [Alethic.Node](https://www.nuget.org/packages/Alethic.Node)'s, which this package builds on, and
+which runs on its own in any host, .NET Framework included. Their types live in the `Alethic.Node` namespace, so code
+that names the pool says `using Alethic.Node;` as well.
+
 ## Three things
 
 **Engines** run JavaScript. A `NodeEnginePool` holds several, each a libnode runtime on its own
@@ -187,7 +191,7 @@ was mounted — the mapping method does not hand back a list of its own.
 
 ## The pool on its own
 
-The pool is a concrete facility: libnode, on purpose, and usable for any JavaScript work, web or
+The pool is a concrete facility — Alethic.Node's — libnode, on purpose, and usable for any JavaScript work, web or
 otherwise. A one-shot puts you on an engine's thread writing ordinary node-api-dotnet:
 
 ```csharp

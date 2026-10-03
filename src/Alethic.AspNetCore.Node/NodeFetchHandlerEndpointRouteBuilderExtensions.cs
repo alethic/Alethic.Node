@@ -1,6 +1,7 @@
 using System;
 
 using Alethic.AspNetCore.Node;
+using Alethic.Node;
 
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;

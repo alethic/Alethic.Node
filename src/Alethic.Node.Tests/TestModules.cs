@@ -2,9 +2,8 @@ using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
-using Alethic.Node;
 
-namespace Alethic.AspNetCore.Node.Tests;
+namespace Alethic.Node.Tests;
 
 /// <summary>
 /// Module sources built from text, for tests.
@@ -29,13 +28,18 @@ static class TestModules
     /// <param name="text"></param>
     public static NodeModuleSource FromText(string name, string text)
     {
-        ArgumentNullException.ThrowIfNull(name);
-        ArgumentNullException.ThrowIfNull(text);
+        if (name is null)
+            throw new ArgumentNullException(nameof(name));
+        if (text is null)
+            throw new ArgumentNullException(nameof(text));
 
-        var directory = Path.Combine(Path.GetTempPath(), "alethic-aspnetcore-node-tests");
+        var directory = Path.Combine(Path.GetTempPath(), "alethic-node-tests");
         Directory.CreateDirectory(directory);
 
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..32];
+        // Written for .NET Framework as well, which has neither SHA256.HashData nor Convert.ToHexString.
+        string hash;
+        using (var sha = SHA256.Create())
+            hash = BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(text))).Replace("-", "").Substring(0, 32);
         var file = Path.Combine(directory, $"{Path.GetFileNameWithoutExtension(name)}-{hash}.cjs");
 
         // Content-addressed, so a concurrent writer is writing identical bytes; a rename into place
@@ -47,7 +51,7 @@ static class TestModules
 
             try
             {
-                File.Move(pending, file, overwrite: false);
+                File.Move(pending, file);
             }
             catch (IOException) when (File.Exists(file))
             {

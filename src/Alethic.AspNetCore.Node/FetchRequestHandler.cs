@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JavaScript.NodeApi;
+using Alethic.Node;
 
 namespace Alethic.AspNetCore.Node;
 

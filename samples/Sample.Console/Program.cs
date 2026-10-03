@@ -1,4 +1,5 @@
 using Alethic.AspNetCore.Node;
+using Alethic.Node;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;

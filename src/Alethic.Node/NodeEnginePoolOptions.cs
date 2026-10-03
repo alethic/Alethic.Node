@@ -1,7 +1,7 @@
 using System;
 using System.Threading.Tasks;
 
-namespace Alethic.AspNetCore.Node;
+namespace Alethic.Node;
 
 /// <summary>
 /// Configures one pool of embedded Node engines.
