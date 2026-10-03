@@ -9,6 +9,9 @@ included — a console, a service, an ASP.NET Web Forms site. The hosts build on
 - **Alethic.Node.AspNetCore** — server-side rendering for ASP.NET Core: the request handler and the endpoint mapping.
   It was published as Alethic.AspNetCore.Node through 0.3; its types moved from that namespace to
   `Alethic.Node.AspNetCore`, and the engines' to `Alethic.Node`.
+- **Alethic.Node.AspNet** — Node in an ASP.NET (System.Web) application on .NET Framework: the application's pool,
+  Node work done on behalf of a request with the request's thread serving what it asks of the site, and `fetch` of
+  the site answered in process by the site's own handlers.
 
 The repository previously carried a fork of MintPlayer.AspNetCore.SpaServices, the community
 continuation of Microsoft's SpaServices.Extensions. That model — JSON-RPC into a Node child

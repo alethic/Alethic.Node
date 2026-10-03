@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFrameworks>net472</TargetFrameworks>
+        <Description>Node embedded in an ASP.NET (System.Web) application on .NET Framework, over Alethic.Node's pooled engines: the application's pool, Node work done on behalf of a request with the request's own thread serving what it asks of the page, and fetch answered in process by the site's own handlers.</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>icon.png</PackageIcon>
+        <PackageTags>aspnet;webforms;system.web;javascript;node;libnode;ssr</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="\" />
+        <None Include="..\..\icon.png" Pack="true" PackagePath="\" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Alethic.Node.AspNet.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Reference Include="System.Configuration" />
+        <Reference Include="System.Web" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="System.Threading.Channels" Version="9.0.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Alethic.Node\Alethic.Node.csproj" />
+    </ItemGroup>
+
+</Project>

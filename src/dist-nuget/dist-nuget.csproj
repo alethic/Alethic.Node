@@ -10,6 +10,9 @@
         <PackageProjectReference Include="..\Alethic.Node\Alethic.Node.csproj">
             <PackageTargetPath>.</PackageTargetPath>
         </PackageProjectReference>
+        <PackageProjectReference Include="..\Alethic.Node.AspNet\Alethic.Node.AspNet.csproj">
+            <PackageTargetPath>.</PackageTargetPath>
+        </PackageProjectReference>
         <PackageProjectReference Include="..\Alethic.Node.AspNetCore\Alethic.Node.AspNetCore.csproj">
             <PackageTargetPath>.</PackageTargetPath>
         </PackageProjectReference>

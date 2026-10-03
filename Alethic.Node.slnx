@@ -15,6 +15,8 @@
   <Folder Name="/src/">
     <Project Path="src/Alethic.Node/Alethic.Node.csproj" />
     <Project Path="src/Alethic.Node.Tests/Alethic.Node.Tests.csproj" />
+    <Project Path="src/Alethic.Node.AspNet/Alethic.Node.AspNet.csproj" />
+    <Project Path="src/Alethic.Node.AspNet.Tests/Alethic.Node.AspNet.Tests.csproj" />
     <Project Path="src/Alethic.Node.AspNetCore/Alethic.Node.AspNetCore.csproj" />
     <Project Path="src/Alethic.Node.AspNetCore.Tests/Alethic.Node.AspNetCore.Tests.csproj" />
   </Folder>
