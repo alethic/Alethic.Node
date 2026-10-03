@@ -95,7 +95,12 @@ use a skin in the site's theme, set as a style sheet theme so a page's own value
 <node:Component runat="server" Module="~/client/client.js" ServerModule="~/App_Data/client/server.cjs" />
 ```
 
-The page links the module's stylesheet, if it has one, as it links any other. The pool is `AspNetNode.Pool` (see
+The page links the module's stylesheet, if it has one, as it links any other.
+
+What runs in the browser is one script, `Components.js`, embedded in the assembly and registered once per page: through
+the `ScriptManager` where the page has one, served by `ScriptResource.axd`, and otherwise by `WebResource.axd`. Each
+control writes only a call to it with its own data, `AlethicNodeComponents.place({ … })`, registered with the
+`ScriptManager` so that partial postbacks place components again. The pool is `AspNetNode.Pool` (see
 Alethic.Node.AspNet).
 
 ## Server rendering

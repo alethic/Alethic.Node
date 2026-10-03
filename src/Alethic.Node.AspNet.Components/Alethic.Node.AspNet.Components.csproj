@@ -14,6 +14,10 @@
     </ItemGroup>
 
     <ItemGroup>
+        <EmbeddedResource Include="Components.js" LogicalName="Alethic.Node.AspNet.Components.Components.js" />
+    </ItemGroup>
+
+    <ItemGroup>
         <InternalsVisibleTo Include="Alethic.Node.AspNet.Components.Tests" />
     </ItemGroup>
 

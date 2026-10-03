@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Web;
@@ -29,14 +28,15 @@ namespace Alethic.Node.AspNet.Components;
 /// <see cref="Command"/>, to which the command posts back; inside an <see cref="UpdatePanel"/> the postback is a
 /// partial one, as for any control in it.
 ///
-/// The script calls the function the module's <c>outlet</c> returns when the component's element leaves the page, by a
-/// partial postback's new markup or by any script, or before it places a component in the same element again: the
-/// module need not watch the page.
+/// What does this in the browser is one script, <c>Components.js</c>, which the page is given once through
+/// <c>WebResource.axd</c>; each control writes only a call to it, with its own data. It calls the function the module's
+/// <c>outlet</c> returns when the component's element leaves the page, by a partial postback's new markup or by any
+/// script, or before it places a component in the same element again: the module need not watch the page.
 ///
-/// On a page with a <see cref="ScriptManager"/> the script is registered with it rather than written after the element,
-/// so that a control inside an <see cref="UpdatePanel"/> places its component again after a partial postback: the
-/// panel's new markup arrives without running the scripts in it, but registered scripts run. That is also why the
-/// script is a classic one that imports the client with <c>import()</c>, not a module.
+/// On a page with a <see cref="ScriptManager"/> the control's call is registered with it rather than written after the
+/// element, so that a control inside an <see cref="UpdatePanel"/> places its component again after a partial postback:
+/// the panel's new markup arrives without running the scripts in it, but registered scripts run. That is also why the
+/// module is imported with <c>import()</c> from a classic script, not by a module script.
 ///
 /// Where there is a server module, <see cref="ServerModule"/>, the page's components are also rendered to HTML on the
 /// server, on Node embedded in the worker process, once the page's <c>PreRender</c> is complete: each found in the
@@ -62,18 +62,10 @@ public class Component : WebControl, IPostBackEventHandler
 {
 
     /// <summary>
-    /// The page's placed components, made by the first outlet script on it: each component's element, and the function
-    /// its module's <c>outlet</c> returned, which is called when the element leaves the page, or before a component is
-    /// placed in the same element again. A <c>MutationObserver</c> sees elements leave, by a partial postback's new markup
-    /// or by any script.
+    /// The name of the script that places the components, embedded in this assembly and served through
+    /// <c>WebResource.axd</c>.
     /// </summary>
-    const string PlacedScript =
-        "var r = window.__alethicNodeComponents || (window.__alethicNodeComponents = (function () { " +
-        "var placed = new Map(); " +
-        "var remove = function (e) { var f = placed.get(e); placed.delete(e); if (typeof f === 'function') { try { f(); } catch (x) { console.error(x); } } }; " +
-        "new MutationObserver(function () { placed.forEach(function (f, e) { if (e.isConnected === false) remove(e); }); }).observe(document, { childList: true, subtree: true }); " +
-        "return { place: function (e, outlet) { remove(e); placed.set(e, outlet()); } }; " +
-        "})());";
+    internal const string ScriptResource = "Alethic.Node.AspNet.Components.Components.js";
 
     /// <summary>
     /// The page's server renders, by the server module each is for: the controls each renders in one call.
@@ -87,7 +79,7 @@ public class Component : WebControl, IPostBackEventHandler
     string? _declaredProps;
 
     /// <summary>
-    /// The script that places the component, once <see cref="OnPreRender"/> has made it, where no
+    /// The control's call to the script that places the component, once <see cref="OnPreRender"/> has made it, where no
     /// <see cref="ScriptManager"/> took it.
     /// </summary>
     string? _outletScript;
@@ -259,55 +251,39 @@ public class Component : WebControl, IPostBackEventHandler
         if (string.IsNullOrEmpty(Name))
             throw new InvalidOperationException($"Component '{ID}' needs a Name, the name of an export of the client.");
 
-        // The module, imported where there is one; otherwise the page's global scope, as it is.
-        var global = string.IsNullOrEmpty(Module);
-        var load = global
-            ? "Promise.resolve(globalThis)"
-            : "import(" + ToScript(Url(Module!) ?? throw new InvalidOperationException($"Component '{ID}': the module is not built: there is no {Module}.")) + ")";
-        var described = global ? "The page's global scope" : Module;
+        // The script that places the components, once for the page, and the control's call to it: the module to import,
+        // where there is one, the component's name, and the props as data, each callback its command's object.
+        var module = string.IsNullOrEmpty(Module) ? null : Url(Module!)
+            ?? throw new InvalidOperationException($"Component '{ID}': the module is not built: there is no {Module}.");
 
-        // The function each callback raises its command through, in the browser. It answers with a promise of the
-        // command's result: resolved when the partial postback the command made comes back, with the result the server
-        // sent with it, or rejected with its error. A full postback replaces the page, and the promise with it.
-        var dispatch = new StringBuilder("function (name, args) {");
-        if (string.IsNullOrEmpty(OnClientCommand) == false)
-            dispatch.Append(" if ((").Append(OnClientCommand).Append(")(name, args) === false) return Promise.resolve();");
+        var options = "{\"id\":" + ToScript(ClientID) +
+            ",\"target\":" + ToScript(UniqueID) +
+            ",\"module\":" + ToScript(module) +
+            ",\"source\":" + ToScript(string.IsNullOrEmpty(Module) ? null : Module) +
+            ",\"name\":" + ToScript(Name!.Split('.')) +
+            ",\"props\":" + Props.ToJson() + "}";
 
-        dispatch.Append(" return new Promise(function (resolve, reject) {");
-        dispatch.Append(" var prm = window.Sys && Sys.WebForms && Sys.WebForms.PageRequestManager && Sys.WebForms.PageRequestManager.getInstance();");
-        dispatch.Append(" if (prm) { var done = function (sender, e) { prm.remove_endRequest(done); var error = e.get_error(); if (error) { e.set_errorHandled(true); reject(error); return; }");
-        dispatch.Append(" var item = e.get_dataItems()[").Append(ToScript(ClientID)).Append("]; resolve(item === undefined ? undefined : JSON.parse(item)); }; prm.add_endRequest(done); }");
-
-        // Posts back, as a button does unless its OnClientClick returned false; off the component's call stack, as the
-        // stock controls' AutoPostBack does: the PageRequestManager's __doPostBack reads its callers' arguments, which a
-        // strict-mode caller, such as a bundled client, refuses.
-        dispatch.Append(" var posted = JSON.stringify({ name: name, args: args }); setTimeout(function () { __doPostBack(").Append(ToScript(UniqueID)).Append(", posted); }, 0);");
-        dispatch.Append(" }); }");
-        Page.ClientScript.GetPostBackEventReference(this, "");
-
-        var props = new StringBuilder();
-        WriteScript(props, Props);
+        // OnClientCommand is the page's own JavaScript, so it is passed as a function rather than as data.
+        var onClientCommand = string.IsNullOrEmpty(OnClientCommand) ? "" : ", function (name, args) { return (" + OnClientCommand + ")(name, args); }";
         var attributes = string.IsNullOrWhiteSpace(ScriptAttributes) ? "" : " " + ScriptAttributes!.Trim();
-        _outletScript = string.Format(
-            "<script{0}>{1}.then(function (m) {{ var x = {3}.reduce(function (o, k) {{ return o == null ? undefined : o[k]; }}, m); if (x == null) throw new Error({6}); if (typeof m.outlet !== 'function') throw new Error({8}); var d = {2}; var c = function (n) {{ var f = function () {{ return d(n, Array.prototype.slice.call(arguments)); }}; Object.defineProperty(f, 'name', {{ value: n }}); return f; }}; {7} var e = document.getElementById({4}); r.place(e, function () {{ return m.outlet(x, e, {5}); }}); }});</script>",
-            attributes,
-            load,
-            dispatch,
-            ToScript(Name!.Split('.')),
-            ToScript(ClientID),
-            props,
-            ToScript($"{described} has no {Name}."),
-            PlacedScript,
-            ToScript($"{described} has no outlet function."));
+        _outletScript = "<script" + attributes + ">AlethicNodeComponents.place(" + options + onClientCommand + ");</script>";
+
+        // What a command posts back with.
+        Page.ClientScript.GetPostBackEventReference(this, "");
 
         if (ScriptManager.GetCurrent(Page) is ScriptManager scriptManager)
         {
+            ScriptManager.RegisterClientScriptResource(this, typeof(Component), ScriptResource);
             ScriptManager.RegisterStartupScript(this, typeof(Component), ClientID, _outletScript, false);
             _outletScript = null;
 
             // Its commands post back partially wherever it is, as an AJAX control's do: a full postback would replace the
             // component that asked before its answer came back.
             scriptManager.RegisterAsyncPostBackControl(this);
+        }
+        else
+        {
+            Page.ClientScript.RegisterClientScriptResource(typeof(Component), ScriptResource);
         }
 
         if (ServerRender && ServerModuleFile() is string serverModule)
@@ -340,56 +316,6 @@ public class Component : WebControl, IPostBackEventHandler
             page.RegisterAsyncTask(new PageAsyncTask(() => RenderOnServerAsync(context, group)));
         else
             page.PreRenderComplete += (sender, args) => RenderOnServer(context, group);
-    }
-
-    /// <summary>
-    /// Writes props as a JavaScript literal for the outlet script, each callback a call to its <c>c</c>, which makes
-    /// the function raising the command, named for it, as the server render's are.
-    /// </summary>
-    /// <param name="script">The script.</param>
-    /// <param name="value">The props, or a value in them.</param>
-    static void WriteScript(StringBuilder script, ComponentValue value)
-    {
-        switch (value)
-        {
-            case ComponentObject obj:
-                script.Append('{');
-                var first = true;
-                foreach (var pair in obj)
-                {
-                    if (first == false)
-                        script.Append(',');
-
-                    script.Append(ToScript(pair.Key)).Append(':');
-                    WriteScript(script, pair.Value);
-                    first = false;
-                }
-
-                script.Append('}');
-                break;
-
-            case ComponentArray array:
-                script.Append('[');
-                for (var i = 0; i < array.Count; i++)
-                {
-                    if (i > 0)
-                        script.Append(',');
-
-                    WriteScript(script, array[i]!);
-                }
-
-                script.Append(']');
-                break;
-
-            case ComponentCommand command:
-                script.Append("c(").Append(ToScript(command.CommandName)).Append(')');
-                break;
-
-            default:
-                // A scalar's JSON, which the writer's default encoder keeps from closing the script element.
-                script.Append(value.ToJson());
-                break;
-        }
     }
 
     /// <summary>
