@@ -12,6 +12,9 @@ included — a console, a service, an ASP.NET Web Forms site. The hosts build on
 - **Alethic.Node.AspNet** — Node in an ASP.NET (System.Web) application on .NET Framework: the application's pool,
   Node work done on behalf of a request with the request's thread serving what it asks of the site, and `fetch` of
   the site answered in process by the site's own handlers.
+- **Alethic.Node.AspNet.React** — React components hosted on Web Forms pages: the `ReactComponent` control, its props
+  from markup and code, its callbacks as server commands, and its server render. Its JavaScript half is the npm
+  package `@alethic/node-aspnet-react`, in `src/node-aspnet-react`.
 
 The repository previously carried a fork of MintPlayer.AspNetCore.SpaServices, the community
 continuation of Microsoft's SpaServices.Extensions. That model — JSON-RPC into a Node child

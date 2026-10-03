@@ -87,6 +87,41 @@ jobs:
       with:
         name: tests
         path: dist/tests.tar.gz
+  npm:
+    name: npm
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: src/node-aspnet-react
+    steps:
+    - name: Checkout Source
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+    - name: Setup Node
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
+    - name: Install GitVersion
+      uses: gittools/actions/gitversion/setup@v4
+      with:
+        versionSpec: 6.x
+    - name: Execute GitVersion
+      uses: gittools/actions/gitversion/execute@v4
+    - name: Install
+      run: npm ci
+    - name: Test
+      run: npm test
+    - name: Pack
+      run: |
+        npm version --no-git-tag-version "${GitVersion_SemVer}"
+        mkdir -p ../../dist/npm
+        npm pack --pack-destination ../../dist/npm
+    - name: Upload npm Packages
+      uses: actions/upload-artifact@v7
+      with:
+        name: npm
+        path: dist/npm
   test:
     strategy:
       fail-fast: false
@@ -103,12 +138,15 @@ jobs:
         tfm:
         - net8.0
         - net9.0
-        # .NET Framework runs on Windows alone, and only the engines and System.Web target it.
+        # .NET Framework runs on Windows alone, and only the engines and System.Web's packages target it.
         include:
         - run: Alethic.Node.Tests
           sys: win-x64
           tfm: net472
         - run: Alethic.Node.AspNet.Tests
+          sys: win-x64
+          tfm: net472
+        - run: Alethic.Node.AspNet.React.Tests
           sys: win-x64
           tfm: net472
     name: Test (${{ matrix.run }}:${{ matrix.tfm }}:${{ matrix.sys }})

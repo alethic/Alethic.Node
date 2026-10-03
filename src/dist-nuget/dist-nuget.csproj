@@ -13,6 +13,9 @@
         <PackageProjectReference Include="..\Alethic.Node.AspNet\Alethic.Node.AspNet.csproj">
             <PackageTargetPath>.</PackageTargetPath>
         </PackageProjectReference>
+        <PackageProjectReference Include="..\Alethic.Node.AspNet.React\Alethic.Node.AspNet.React.csproj">
+            <PackageTargetPath>.</PackageTargetPath>
+        </PackageProjectReference>
         <PackageProjectReference Include="..\Alethic.Node.AspNetCore\Alethic.Node.AspNetCore.csproj">
             <PackageTargetPath>.</PackageTargetPath>
         </PackageProjectReference>
