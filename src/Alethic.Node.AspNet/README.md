@@ -7,6 +7,8 @@ awkward:
 - the request's `HttpContext` is not on the engine's thread;
 - a page's script fetches from the site it is running inside.
 
+It also serves whole pages from a JavaScript application's `fetch` handler, on routes beside the site's own pages.
+
 ## The application's pool
 
 `AspNetNode.Pool` is the application's pool. It works with no setup at all: one engine, made the first time it is
@@ -77,6 +79,46 @@ What the child context cannot carry:
 - a request body;
 - response headers other than the content type;
 - output that isn't text.
+
+## Whole pages from a `fetch` handler
+
+`FetchRequestHandler` answers a request with whatever the application's `fetch` handler answers: its status, headers
+and body. Mount it on the site's routes in `Application_Start`:
+
+```csharp
+protected void Application_Start(object sender, EventArgs e)
+{
+    var app = new FetchRequestHandler(NodeModuleSource.FromFile(HostingEnvironment.MapPath("~/App_Data/app/app.cjs")));
+
+    RouteTable.Routes.MapNode("about", app);
+    RouteTable.Routes.MapNode("parks/{parkRef}", app);
+}
+```
+
+The module is a self-contained CommonJS bundle. Its default export has a `fetch` function, or is the function itself,
+and it is called as `fetch(request, env, ctx)`:
+- **`request`** is the runtime's own `Request`. Its URL is the path below the site's root under `BaseUri`
+  (`http://node.invalid/` unless set), not where the visitor was: `X-Forwarded-Proto`, `X-Forwarded-Host` and, for a
+  site below the root, `X-Forwarded-Prefix` say that. Its body is read whole first, as ASP.NET reads it.
+- **`env`** holds the strings in `FetchRequestHandlerOptions.Environment`.
+- **`ctx`** has `waitUntil(promise)` and `passThroughOnException()`.
+- **It returns** a `Response`, or a promise of one.
+
+The handler runs as a `NodeRequest`, so a `fetch` of the site the application makes while it renders is answered in
+process, as the visitor.
+
+The response is the application's: a 404 it renders is the page the visitor sees, not IIS's. `ResponseBody` says how
+the body is written:
+- **`Streamed`**, the default: each chunk is written and flushed as the application produces it. A failure after the
+  first chunk can only truncate the page.
+- **`Buffered`**: nothing is written until the render is done, so a failure is still one the site's error handling
+  answers.
+
+The routes share the URL space with the site. A request no route matches goes on to the site's pages and handlers, and
+so does one for a file that exists. A catch-all route, such as `{*path}`, also takes the paths of
+`WebResource.axd` and `ScriptResource.axd`; put `RouteTable.Routes.Ignore("{resource}.axd/{*pathInfo}")` ahead of it.
+
+`MapNode` takes any `IHttpHandler`, and returns the `Route` for its defaults and constraints.
 
 ## One Node per process
 

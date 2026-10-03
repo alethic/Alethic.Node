@@ -13,6 +13,7 @@ Alethic.Node.AspNet.Components. Each page shows one of the ways Web Forms can dr
 | `Errors.aspx` | A component that throws, or whose command's handler throws, failing the page with a `ComponentRenderException`. |
 | `Globals.aspx` | A component with no `Module`: its `outlet` and component are globals a plain script defines, with no framework, rendering only in the browser, its command still answered. |
 | `Demo.aspx` | A catalog in a `Repeater` inside an `UpdatePanel`. Products are bound to their components, commands bubble to `ItemCommand`, and a cart is shared with the master page's badge through the page's single React tree. |
+| `/parks/{parkRef}`, `/about` | Not pages: routes, mapped in `Global.asax` with `MapNode`, on which the client's full-page application answers with whole documents from its `fetch` handler, rendered on Node and hydrated in the browser. Its own links to `/` lead back to the site's `Default.aspx`. |
 
 ## Layout
 
@@ -23,6 +24,9 @@ Alethic.Node.AspNet.Components. Each page shows one of the ways Web Forms can dr
   building the site builds it and copies its two Web Forms bundles where the skin says they are:
   - `Server/components/client.js`, the browser entry, exporting `outlet` and the components;
   - `Server/App_Data/components/server.cjs`, the server bundle, exporting `render`.
+
+  It also copies the full-page application the ASP.NET Core sample serves: `Server/App_Data/app/app.cjs`, its `fetch`
+  handler, and `Server/app.js`, the browser bundle its documents load.
 
 ## Running it
 

@@ -17,6 +17,8 @@
         <li><a href="/Errors.aspx">Errors</a>: what becomes of a component that fails on the server.</li>
         <li><a href="/Globals.aspx">Global scope</a>: a component with no module, from a plain script's globals.</li>
         <li><a href="/Demo.aspx">Demo</a>: a catalog in a <code>Repeater</code>, with a cart the header's badge shares.</li>
+        <li><a href="/parks/enchanted-rock">Full pages</a>: not Web Forms at all, but a whole document from the client's
+            <code>fetch</code> handler, on routes of its own beside these pages.</li>
     </ul>
 
     <h2>The simplest component</h2>

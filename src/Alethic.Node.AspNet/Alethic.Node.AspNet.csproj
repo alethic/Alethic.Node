@@ -2,7 +2,7 @@
 
     <PropertyGroup>
         <TargetFrameworks>net472</TargetFrameworks>
-        <Description>Node embedded in an ASP.NET (System.Web) application on .NET Framework, over Alethic.Node's pooled engines: the application's pool, Node work done on behalf of a request with the request's own thread serving what it asks of the page, and fetch answered in process by the site's own handlers.</Description>
+        <Description>Node embedded in an ASP.NET (System.Web) application on .NET Framework, over Alethic.Node's pooled engines: the application's pool, Node work done on behalf of a request with the request's own thread serving what it asks of the page, fetch answered in process by the site's own handlers, and whole pages from a JavaScript application's fetch handler, mounted on ASP.NET routes.</Description>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>icon.png</PackageIcon>
         <PackageTags>aspnet;webforms;system.web;javascript;node;libnode;ssr</PackageTags>

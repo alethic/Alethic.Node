@@ -40,7 +40,10 @@
         <ProjectReference Include="..\..\..\src\Alethic.Node.AspNet.Components\Alethic.Node.AspNet.Components.csproj" />
     </ItemGroup>
 
-    <!-- The shared client, Sample.Client: its systemweb and systemweb-ssr bundles are this sample's. -->
+    <!--
+        The shared client, Sample.Client: its systemweb and systemweb-ssr bundles are this sample's, and its full-page
+        application, aspnet and ssr, is mounted on routes of its own.
+    -->
     <ItemGroup>
         <ProjectReference Include="..\..\Sample.Client\Sample.Client.esproj">
             <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
@@ -49,12 +52,14 @@
     </ItemGroup>
 
     <!--
-        Copied into the site's own folder, which is what IIS serves, at the paths the components look in by default: the
-        browser entry where it is served, the server bundle under App_Data, where nothing is.
+        Copied into the site's own folder, which is what IIS serves: each browser bundle where it is served, each server
+        bundle under App_Data, where nothing is. The full-page application asks for its browser bundle at /app.js.
     -->
     <Target Name="CopyClientBundles" AfterTargets="ResolveProjectReferences">
         <Copy SourceFiles="..\..\Sample.Client\dist\systemweb\client.js" DestinationFolder="components" SkipUnchangedFiles="true" />
         <Copy SourceFiles="..\..\Sample.Client\dist\systemweb-ssr\server.cjs" DestinationFolder="App_Data\components" SkipUnchangedFiles="true" />
+        <Copy SourceFiles="..\..\Sample.Client\dist\aspnet\app.js" DestinationFolder="." SkipUnchangedFiles="true" />
+        <Copy SourceFiles="..\..\Sample.Client\dist\ssr\app.cjs" DestinationFolder="App_Data\app" SkipUnchangedFiles="true" />
     </Target>
 
 </Project>
