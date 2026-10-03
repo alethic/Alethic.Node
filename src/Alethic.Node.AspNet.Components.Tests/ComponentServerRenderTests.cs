@@ -12,14 +12,14 @@ using Alethic.Node.Tests;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace Alethic.Node.AspNet.React.Tests;
+namespace Alethic.Node.AspNet.Components.Tests;
 
 /// <summary>
-/// The server render against a server bundle that keeps <c>renderOutlets</c>' contract without React: props marshalled,
+/// The server render against a server bundle that keeps <c>renderOutlets</c>' contract without a framework: props marshalled,
 /// commands raised on the request, failures carried back, and the site fetched in process.
 /// </summary>
 [TestClass]
-public class ReactServerRenderTests
+public class ComponentServerRenderTests
 {
 
     /// <summary>
@@ -85,9 +85,9 @@ public class ReactServerRenderTests
     /// <summary>
     /// An outlet whose commands are answered by <paramref name="raise"/>.
     /// </summary>
-    static ReactOutlet Outlet(string id, string component, ReactObject props, Func<string, IReadOnlyList<JsonElement>, Task<string?>>? raise = null)
+    static ComponentOutlet Outlet(string id, string component, ComponentObject props, Func<string, IReadOnlyList<JsonElement>, Task<string?>>? raise = null)
     {
-        return new ReactOutlet(id, component, props, raise ?? ((name, args) => Task.FromResult<string?>(null)));
+        return new ComponentOutlet(id, component, props, raise ?? ((name, args) => Task.FromResult<string?>(null)));
     }
 
     /// <summary>
@@ -96,16 +96,16 @@ public class ReactServerRenderTests
     [TestMethod]
     public async Task Props_reach_the_bundle_as_JavaScript()
     {
-        var props = new ReactObject
+        var props = new ComponentObject
         {
             { "title", "<b>" },
             { "count", 1.5 },
             { "none", null },
-            { "nested", new ReactObject { { "list", new ReactArray { true, new ReactCommand("Pick") } } } },
-            { "onGo", new ReactCommand("Go") },
+            { "nested", new ComponentObject { { "list", new ComponentArray { true, new ComponentCommand("Pick") } } } },
+            { "onGo", new ComponentCommand("Go") },
         };
 
-        var rendered = await ReactServerRender.RenderAsync(Request(), pool, Bundle, [Outlet("a", "Echo", props)], TimeSpan.FromSeconds(30));
+        var rendered = await ComponentServerRender.RenderAsync(Request(), pool, Bundle, [Outlet("a", "Echo", props)], TimeSpan.FromSeconds(30));
         Assert.AreEqual("""{"title":"<b>","count":1.5,"none":null,"nested":{"list":[true,"fn:Pick"]},"onGo":"fn:Go"}""", rendered["a"].Html);
     }
 
@@ -118,14 +118,14 @@ public class ReactServerRenderTests
     {
         var thread = 0;
         string? raised = null;
-        var outlet = Outlet("a", "Command", new ReactObject { { "onGo", new ReactCommand("Go") } }, (name, args) =>
+        var outlet = Outlet("a", "Command", new ComponentObject { { "onGo", new ComponentCommand("Go") } }, (name, args) =>
         {
             thread = Environment.CurrentManagedThreadId;
             raised = $"{name}({string.Join(",", args.Select(i => i.GetRawText()))})";
             return Task.FromResult<string?>("""{"ok":true}""");
         });
 
-        var rendered = ReactServerRender.Render(Request(), pool, Bundle, [outlet], TimeSpan.FromSeconds(30));
+        var rendered = ComponentServerRender.Render(Request(), pool, Bundle, [outlet], TimeSpan.FromSeconds(30));
 
         Assert.AreEqual(Environment.CurrentManagedThreadId, thread);
         Assert.AreEqual("""Go(1,"two")""", raised);
@@ -138,13 +138,13 @@ public class ReactServerRenderTests
     [TestMethod]
     public async Task An_asynchronous_command_is_awaited()
     {
-        var outlet = Outlet("a", "Command", new ReactObject { { "onGo", new ReactCommand("Go") } }, async (name, args) =>
+        var outlet = Outlet("a", "Command", new ComponentObject { { "onGo", new ComponentCommand("Go") } }, async (name, args) =>
         {
             await Task.Delay(10);
             return "42";
         });
 
-        var rendered = await ReactServerRender.RenderAsync(Request(), pool, Bundle, [outlet], TimeSpan.FromSeconds(30));
+        var rendered = await ComponentServerRender.RenderAsync(Request(), pool, Bundle, [outlet], TimeSpan.FromSeconds(30));
         Assert.AreEqual("42", rendered["a"].Html);
     }
 
@@ -156,9 +156,9 @@ public class ReactServerRenderTests
     public async Task What_a_command_throws_is_carried_back()
     {
         var thrown = new InvalidOperationException("handler failed");
-        var outlet = Outlet("a", "Command", new ReactObject { { "onGo", new ReactCommand("Go") } }, (name, args) => throw thrown);
+        var outlet = Outlet("a", "Command", new ComponentObject { { "onGo", new ComponentCommand("Go") } }, (name, args) => throw thrown);
 
-        var rendered = await ReactServerRender.RenderAsync(Request(), pool, Bundle, [outlet], TimeSpan.FromSeconds(30));
+        var rendered = await ComponentServerRender.RenderAsync(Request(), pool, Bundle, [outlet], TimeSpan.FromSeconds(30));
 
         Assert.IsNull(rendered["a"].Html);
         Assert.AreEqual("handler failed", rendered["a"].Error!.Message);
@@ -174,7 +174,7 @@ public class ReactServerRenderTests
         var request = Request();
         request.Handlers = (context, path) => new Handler(c => c.Response.Write($"{path}?{c.Request.QueryString}"));
 
-        var rendered = await ReactServerRender.RenderAsync(request, pool, Bundle, [Outlet("a", "Fetch", [])], TimeSpan.FromSeconds(30));
+        var rendered = await ComponentServerRender.RenderAsync(request, pool, Bundle, [Outlet("a", "Fetch", [])], TimeSpan.FromSeconds(30));
         Assert.AreEqual("data?x=1", rendered["a"].Html);
     }
 
@@ -184,7 +184,7 @@ public class ReactServerRenderTests
     [TestMethod]
     public async Task A_component_the_bundle_forgets_fails_the_render()
     {
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ReactServerRender.RenderAsync(Request(), pool, Bundle, [Outlet("a", "Forgets", [])], TimeSpan.FromSeconds(30)));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ComponentServerRender.RenderAsync(Request(), pool, Bundle, [Outlet("a", "Forgets", [])], TimeSpan.FromSeconds(30)));
     }
 
     /// <summary>
@@ -196,7 +196,7 @@ public class ReactServerRenderTests
         var bundle = TestModules.FromText("empty.cjs", "module.exports = {};");
 
         // Thrown on the engine's thread, which node-api-dotnet hands back wrapped.
-        var thrown = await Assert.ThrowsAsync<Exception>(() => ReactServerRender.RenderAsync(Request(), pool, bundle, [Outlet("a", "Echo", [])], TimeSpan.FromSeconds(30)));
+        var thrown = await Assert.ThrowsAsync<Exception>(() => ComponentServerRender.RenderAsync(Request(), pool, bundle, [Outlet("a", "Echo", [])], TimeSpan.FromSeconds(30)));
         StringAssert.Contains(thrown.Message, "exports no renderOutlets");
     }
 
@@ -206,13 +206,13 @@ public class ReactServerRenderTests
     [TestMethod]
     public async Task A_slow_render_times_out()
     {
-        var outlet = Outlet("a", "Command", new ReactObject { { "onGo", new ReactCommand("Go") } }, async (name, args) =>
+        var outlet = Outlet("a", "Command", new ComponentObject { { "onGo", new ComponentCommand("Go") } }, async (name, args) =>
         {
             await Task.Delay(Timeout.Infinite);
             return null;
         });
 
-        await Assert.ThrowsExactlyAsync<TimeoutException>(() => ReactServerRender.RenderAsync(Request(), pool, Bundle, [outlet], TimeSpan.FromMilliseconds(200)));
+        await Assert.ThrowsExactlyAsync<TimeoutException>(() => ComponentServerRender.RenderAsync(Request(), pool, Bundle, [outlet], TimeSpan.FromMilliseconds(200)));
     }
 
     /// <summary>

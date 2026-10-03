@@ -111,7 +111,7 @@ jobs:
         - run: Alethic.Node.AspNet.Tests
           sys: win-x64
           tfm: net472
-        - run: Alethic.Node.AspNet.React.Tests
+        - run: Alethic.Node.AspNet.Components.Tests
           sys: win-x64
           tfm: net472
     name: Test (${{ matrix.run }}:${{ matrix.tfm }}:${{ matrix.sys }})

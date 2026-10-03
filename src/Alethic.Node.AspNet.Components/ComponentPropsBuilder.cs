@@ -2,13 +2,14 @@ using System;
 using System.Collections;
 using System.Web.UI;
 
-namespace Alethic.Node.AspNet.React;
+namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
-/// Builds the <see cref="ReactProp"/>s and <see cref="ReactCallback"/>s nested in a <see cref="ReactComponent"/> or a
-/// <see cref="ReactProp"/> as controls without their needing <c>runat="server"</c>, as a list's items need none.
+/// Builds the <see cref="ComponentProp"/>s and <see cref="ComponentCallback"/>s nested in a <see cref="NodeComponent"/>
+/// or a <see cref="ComponentProp"/> as controls without their needing <c>runat="server"</c>, as a list's items need
+/// none.
 /// </summary>
-public class ReactPropsBuilder : ControlBuilder
+public class ComponentPropsBuilder : ControlBuilder
 {
 
     /// <summary>
@@ -19,10 +20,10 @@ public class ReactPropsBuilder : ControlBuilder
     public override Type GetChildControlType(string tagName, IDictionary attribs)
     {
         var name = tagName.Substring(tagName.IndexOf(':') + 1);
-        if (string.Equals(name, nameof(ReactProp), StringComparison.OrdinalIgnoreCase))
-            return typeof(ReactProp);
-        if (string.Equals(name, nameof(ReactCallback), StringComparison.OrdinalIgnoreCase))
-            return typeof(ReactCallback);
+        if (string.Equals(name, nameof(ComponentProp), StringComparison.OrdinalIgnoreCase))
+            return typeof(ComponentProp);
+        if (string.Equals(name, nameof(ComponentCallback), StringComparison.OrdinalIgnoreCase))
+            return typeof(ComponentCallback);
 
         return base.GetChildControlType(tagName, attribs);
     }

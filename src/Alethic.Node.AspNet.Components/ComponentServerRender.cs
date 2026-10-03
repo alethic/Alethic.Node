@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 using Microsoft.JavaScript.NodeApi;
 
-namespace Alethic.Node.AspNet.React;
+namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
 /// One component a page renders on the server: where it goes, what it is, its props, and how its commands are raised.
@@ -19,7 +19,7 @@ namespace Alethic.Node.AspNet.React;
 /// <param name="props">Its props.</param>
 /// <param name="raise">Raises one of its commands, on the request: the command's name and what the component called the
 /// callback with. Completes with the command's result as JSON, or <see langword="null"/> for none.</param>
-internal sealed class ReactOutlet(string id, string component, ReactObject props, Func<string, IReadOnlyList<JsonElement>, Task<string?>> raise)
+internal sealed class ComponentOutlet(string id, string component, ComponentObject props, Func<string, IReadOnlyList<JsonElement>, Task<string?>> raise)
 {
 
     /// <summary>
@@ -35,7 +35,7 @@ internal sealed class ReactOutlet(string id, string component, ReactObject props
     /// <summary>
     /// Its props.
     /// </summary>
-    public ReactObject Props { get; } = props;
+    public ComponentObject Props { get; } = props;
 
     /// <summary>
     /// Raises one of its commands, on the request.
@@ -45,8 +45,8 @@ internal sealed class ReactOutlet(string id, string component, ReactObject props
 }
 
 /// <summary>
-/// Renders a page's components to HTML in one call to the server bundle's <c>renderOutlets</c>, on a Node engine, as the
-/// page's request.
+/// Renders a page's components to HTML in one call to the server bundle's <c>renderOutlets</c>, on a Node engine, as
+/// the page's request.
 /// </summary>
 /// <remarks>
 /// The bundle is given each component's props as JavaScript values, every callback a function that raises its command
@@ -55,10 +55,10 @@ internal sealed class ReactOutlet(string id, string component, ReactObject props
 ///
 /// <c>renderOutlets(requests)</c> takes <c>{ id, component, props }</c> for each component and resolves to JSON naming
 /// what became of each, by id: <c>{ html }</c>, or <c>{ error: { message, stack, componentStack, dotnetErrorId } }</c>.
-/// A command whose handler threw rejects with an <c>Error</c> carrying a <c>dotnetErrorId</c>, by which the exception is
-/// found again to be the inner exception of the component's error.
+/// A command whose handler threw rejects with an <c>Error</c> carrying a <c>dotnetErrorId</c>, by which the exception
+/// is found again to be the inner exception of the component's error.
 /// </remarks>
-internal static class ReactServerRender
+internal static class ComponentServerRender
 {
 
     /// <summary>
@@ -77,7 +77,7 @@ internal static class ReactServerRender
     /// <param name="timeout">How long to wait.</param>
     /// <returns>What became of each component, by its element's id.</returns>
     /// <exception cref="TimeoutException">The render took longer than <paramref name="timeout"/>.</exception>
-    public static async Task<IReadOnlyDictionary<string, ReactRendered>> RenderAsync(NodeRequest request, NodeEnginePool pool, NodeModuleSource bundle, IReadOnlyList<ReactOutlet> outlets, TimeSpan timeout)
+    public static async Task<IReadOnlyDictionary<string, ComponentRendered>> RenderAsync(NodeRequest request, NodeEnginePool pool, NodeModuleSource bundle, IReadOnlyList<ComponentOutlet> outlets, TimeSpan timeout)
     {
         var failures = new ConcurrentDictionary<string, Exception>();
         using var cancel = new CancellationTokenSource(timeout);
@@ -103,7 +103,7 @@ internal static class ReactServerRender
     /// <param name="timeout">How long to wait.</param>
     /// <returns>What became of each component, by its element's id.</returns>
     /// <exception cref="TimeoutException">The render took longer than <paramref name="timeout"/>.</exception>
-    public static IReadOnlyDictionary<string, ReactRendered> Render(NodeRequest request, NodeEnginePool pool, NodeModuleSource bundle, IReadOnlyList<ReactOutlet> outlets, TimeSpan timeout)
+    public static IReadOnlyDictionary<string, ComponentRendered> Render(NodeRequest request, NodeEnginePool pool, NodeModuleSource bundle, IReadOnlyList<ComponentOutlet> outlets, TimeSpan timeout)
     {
         var failures = new ConcurrentDictionary<string, Exception>();
         using var cancel = new CancellationTokenSource(timeout);
@@ -124,13 +124,13 @@ internal static class ReactServerRender
     /// <param name="request">The request.</param>
     /// <param name="outlets">The components.</param>
     /// <param name="failures">What failed commands threw, by the id their rejections carry.</param>
-    static Func<JSValue, Task<string>> Work(NodeRequest request, IReadOnlyList<ReactOutlet> outlets, ConcurrentDictionary<string, Exception> failures)
+    static Func<JSValue, Task<string>> Work(NodeRequest request, IReadOnlyList<ComponentOutlet> outlets, ConcurrentDictionary<string, Exception> failures)
     {
         return async exports =>
         {
             var renderOutlets = exports["renderOutlets"];
             if (renderOutlets.IsFunction() == false)
-                throw new InvalidOperationException("The React server bundle exports no renderOutlets function.");
+                throw new InvalidOperationException("The server bundle exports no renderOutlets function.");
 
             var requests = JSValue.CreateArray(outlets.Count);
             for (var i = 0; i < outlets.Count; i++)
@@ -154,23 +154,23 @@ internal static class ReactServerRender
     /// </summary>
     /// <param name="value">The props, or a value in them.</param>
     /// <param name="callback">Makes the function a command is, from its name.</param>
-    internal static JSValue ToJS(ReactValue value, Func<string, JSValue> callback)
+    internal static JSValue ToJS(ComponentValue value, Func<string, JSValue> callback)
     {
         switch (value)
         {
-            case ReactObject obj:
+            case ComponentObject obj:
                 var o = JSValue.CreateObject();
                 foreach (var pair in obj)
                     o[pair.Key] = ToJS(pair.Value, callback);
                 return o;
 
-            case ReactArray array:
+            case ComponentArray array:
                 var a = JSValue.CreateArray(array.Count);
                 for (var i = 0; i < array.Count; i++)
                     a[i] = ToJS(array[i]!, callback);
                 return a;
 
-            case ReactCommand command:
+            case ComponentCommand command:
                 return callback(command.CommandName);
 
             default:
@@ -180,15 +180,15 @@ internal static class ReactServerRender
     }
 
     /// <summary>
-    /// The function a command is during a server render: it hands the command to the request, which raises it there, and
-    /// answers with a promise of the command's result. The component goes on rendering meanwhile, as it would in the
-    /// browser while the command posted back.
+    /// The function a command is during a server render: it hands the command to the request, which raises it there,
+    /// and answers with a promise of the command's result. The component goes on rendering meanwhile, as it would in
+    /// the browser while the command posted back.
     /// </summary>
     /// <param name="request">The request.</param>
     /// <param name="outlet">The component whose props it is in.</param>
     /// <param name="name">The command's name.</param>
     /// <param name="failures">What failed commands threw, by the id their rejections carry.</param>
-    static JSValue Callback(NodeRequest request, ReactOutlet outlet, string name, ConcurrentDictionary<string, Exception> failures)
+    static JSValue Callback(NodeRequest request, ComponentOutlet outlet, string name, ConcurrentDictionary<string, Exception> failures)
     {
         return JSValue.CreateFunction(name, args =>
         {
@@ -217,8 +217,8 @@ internal static class ReactServerRender
     }
 
     /// <summary>
-    /// Settles a command's promise with its result, or rejects it with what its handler threw, marked with an id by which
-    /// the exception is found again. Started on the engine's thread, so it resumes there.
+    /// Settles a command's promise with its result, or rejects it with what its handler threw, marked with an id by
+    /// which the exception is found again. Started on the engine's thread, so it resumes there.
     /// </summary>
     /// <param name="deferred">The promise's settling side.</param>
     /// <param name="done">The command.</param>
@@ -249,12 +249,12 @@ internal static class ReactServerRender
     /// <param name="outlets">The components it was asked to render.</param>
     /// <param name="failures">What failed commands threw, by the id their rejections carry.</param>
     /// <exception cref="InvalidOperationException">It said nothing of a component it was asked to render.</exception>
-    static IReadOnlyDictionary<string, ReactRendered> Read(string json, IReadOnlyList<ReactOutlet> outlets, ConcurrentDictionary<string, Exception> failures)
+    static IReadOnlyDictionary<string, ComponentRendered> Read(string json, IReadOnlyList<ComponentOutlet> outlets, ConcurrentDictionary<string, Exception> failures)
     {
-        var read = JsonSerializer.Deserialize<Dictionary<string, ReactRendered>>(json, ReadOptions) ?? [];
+        var read = JsonSerializer.Deserialize<Dictionary<string, ComponentRendered>>(json, ReadOptions) ?? [];
         foreach (var outlet in outlets)
             if (read.ContainsKey(outlet.Id) == false)
-                throw new InvalidOperationException($"The React server bundle's renderOutlets said nothing of {outlet.Component} in '{outlet.Id}'.");
+                throw new InvalidOperationException($"The server bundle's renderOutlets said nothing of {outlet.Component} in '{outlet.Id}'.");
 
         foreach (var result in read.Values)
             if (result.Error?.DotnetErrorId is string id && failures.TryGetValue(id, out var exception))
@@ -268,7 +268,7 @@ internal static class ReactServerRender
 /// <summary>
 /// What became of one component in a server render: its HTML, or why there is none.
 /// </summary>
-internal sealed class ReactRendered
+internal sealed class ComponentRendered
 {
 
     /// <summary>
@@ -279,14 +279,14 @@ internal sealed class ReactRendered
     /// <summary>
     /// Why it did not, where it did not.
     /// </summary>
-    public ReactRenderError? Error { get; set; }
+    public ComponentRenderError? Error { get; set; }
 
 }
 
 /// <summary>
 /// What a component threw while it rendered on the server, and where.
 /// </summary>
-internal sealed class ReactRenderError
+internal sealed class ComponentRenderError
 {
 
     /// <summary>
@@ -300,7 +300,7 @@ internal sealed class ReactRenderError
     public string? Stack { get; set; }
 
     /// <summary>
-    /// Where in the component tree, where React knows.
+    /// Where in the component tree, where the client reports it.
     /// </summary>
     public string? ComponentStack { get; set; }
 

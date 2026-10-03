@@ -2,10 +2,10 @@
 
     <PropertyGroup>
         <TargetFrameworks>net472</TargetFrameworks>
-        <Description>React components hosted on ASP.NET Web Forms pages: a ReactComponent control whose props are set in markup and code and kept in view state, whose callbacks raise server commands, and which renders on the server on Node embedded in the worker process, all components of a page sharing one React tree.</Description>
+        <Description>JavaScript components hosted on ASP.NET Web Forms pages: a NodeComponent control whose props are set in markup and code and kept in view state, whose callbacks raise server commands, and which renders on the server on Node embedded in the worker process, through two functions the site's own client provides.</Description>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>icon.png</PackageIcon>
-        <PackageTags>aspnet;webforms;system.web;react;ssr;node;libnode</PackageTags>
+        <PackageTags>aspnet;webforms;system.web;components;react;ssr;node;libnode</PackageTags>
     </PropertyGroup>
 
     <ItemGroup>
@@ -14,7 +14,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <InternalsVisibleTo Include="Alethic.Node.AspNet.React.Tests" />
+        <InternalsVisibleTo Include="Alethic.Node.AspNet.Components.Tests" />
     </ItemGroup>
 
     <ItemGroup>

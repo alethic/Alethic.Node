@@ -6,19 +6,19 @@ using System.Web.UI;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace Alethic.Node.AspNet.React.Tests;
+namespace Alethic.Node.AspNet.Components.Tests;
 
 /// <summary>
 /// The control apart from a page: its props from markup, its view state, and its commands.
 /// </summary>
 [TestClass]
-public class ReactComponentTests
+public class NodeComponentTests
 {
 
     /// <summary>
     /// The control with its protected lifecycle exposed.
     /// </summary>
-    sealed class Exposed : ReactComponent
+    sealed class Exposed : NodeComponent
     {
 
         /// <summary>
@@ -45,19 +45,19 @@ public class ReactComponentTests
     static Exposed Declared()
     {
         var control = new Exposed() { ID = "rc", Component = "Panel" };
-        control.Controls.Add(new ReactProp() { Name = "title", Value = "Pipettes" });
-        control.Controls.Add(new ReactProp() { Name = "count", Json = "3" });
+        control.Controls.Add(new ComponentProp() { Name = "title", Value = "Pipettes" });
+        control.Controls.Add(new ComponentProp() { Name = "count", Json = "3" });
 
-        var filter = new ReactProp() { Name = "filter" };
-        filter.Controls.Add(new ReactProp() { Name = "brand", Value = "Eppendorf" });
+        var filter = new ComponentProp() { Name = "filter" };
+        filter.Controls.Add(new ComponentProp() { Name = "brand", Value = "Eppendorf" });
         control.Controls.Add(filter);
 
-        var columns = new ReactProp() { Name = "columns", Array = true };
-        columns.Controls.Add(new ReactProp() { Value = "sku" });
-        columns.Controls.Add(new ReactProp() { Value = "name" });
+        var columns = new ComponentProp() { Name = "columns", Array = true };
+        columns.Controls.Add(new ComponentProp() { Value = "sku" });
+        columns.Controls.Add(new ComponentProp() { Value = "name" });
         control.Controls.Add(columns);
 
-        control.Controls.Add(new ReactCallback() { Name = "onSelect", CommandName = "Select" });
+        control.Controls.Add(new ComponentCallback() { Name = "onSelect", CommandName = "Select" });
         control.Controls.Add(new LiteralControl("  "));
         control.Init();
         return control;
@@ -69,7 +69,7 @@ public class ReactComponentTests
     [TestMethod]
     public void Markup_builds_the_props()
     {
-        Assert.AreEqual("""{"title":"Pipettes","count":3,"filter":{"brand":"Eppendorf"},"columns":["sku","name"],"onSelect":{"$reactCommand":"Select"}}""", Declared().Props.ToJson());
+        Assert.AreEqual("""{"title":"Pipettes","count":3,"filter":{"brand":"Eppendorf"},"columns":["sku","name"],"onSelect":{"$componentCommand":"Select"}}""", Declared().Props.ToJson());
     }
 
     /// <summary>
@@ -79,7 +79,7 @@ public class ReactComponentTests
     public void A_prop_needs_a_name()
     {
         var control = new Exposed();
-        control.Controls.Add(new ReactProp() { Value = "x" });
+        control.Controls.Add(new ComponentProp() { Value = "x" });
 
         Assert.ThrowsExactly<InvalidOperationException>(control.Init);
     }
@@ -104,13 +104,13 @@ public class ReactComponentTests
     }
 
     /// <summary>
-    /// A command raises the control's <see cref="ReactComponent.Command"/>, with its arguments.
+    /// A command raises the control's <see cref="NodeComponent.Command"/>, with its arguments.
     /// </summary>
     [TestMethod]
     public void A_command_raises_the_command_event()
     {
         var control = Declared();
-        ReactCommandEventArgs? raised = null;
+        ComponentCommandEventArgs? raised = null;
         control.Command += (sender, e) => raised = e;
 
         control.RaiseCommand("Select", [JsonSerializer.SerializeToElement(new { sku = "A1" })], false);

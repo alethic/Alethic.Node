@@ -13,7 +13,7 @@
         <PackageProjectReference Include="..\Alethic.Node.AspNet\Alethic.Node.AspNet.csproj">
             <PackageTargetPath>.</PackageTargetPath>
         </PackageProjectReference>
-        <PackageProjectReference Include="..\Alethic.Node.AspNet.React\Alethic.Node.AspNet.React.csproj">
+        <PackageProjectReference Include="..\Alethic.Node.AspNet.Components\Alethic.Node.AspNet.Components.csproj">
             <PackageTargetPath>.</PackageTargetPath>
         </PackageProjectReference>
         <PackageProjectReference Include="..\Alethic.Node.AspNetCore\Alethic.Node.AspNetCore.csproj">

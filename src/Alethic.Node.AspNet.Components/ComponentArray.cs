@@ -2,21 +2,21 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text.Json;
 
-namespace Alethic.Node.AspNet.React;
+namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
-/// An array in a <see cref="ReactComponent"/>'s props.
+/// An array in a <see cref="NodeComponent"/>'s props.
 /// </summary>
-public sealed class ReactArray : ReactValue, IEnumerable<ReactValue>
+public sealed class ComponentArray : ComponentValue, IEnumerable<ComponentValue>
 {
 
-    readonly List<ReactValue> items = [];
+    readonly List<ComponentValue> items = [];
 
     /// <inheritdoc />
-    public override ReactValue? this[int index]
+    public override ComponentValue? this[int index]
     {
         get => items[index];
-        set => items[index] = value ?? new ReactScalar(null);
+        set => items[index] = value ?? new ComponentScalar(null);
     }
 
     /// <summary>
@@ -25,10 +25,10 @@ public sealed class ReactArray : ReactValue, IEnumerable<ReactValue>
     public int Count => items.Count;
 
     /// <summary>
-    /// Adds an item, also for collection initializers: <c>new ReactArray { "sku", "name" }</c>.
+    /// Adds an item, also for collection initializers: <c>new ComponentArray { "sku", "name" }</c>.
     /// </summary>
     /// <param name="value">The item.</param>
-    public void Add(ReactValue? value) => items.Add(value ?? new ReactScalar(null));
+    public void Add(ComponentValue? value) => items.Add(value ?? new ComponentScalar(null));
 
     /// <summary>
     /// Takes the item at a position away.
@@ -37,7 +37,7 @@ public sealed class ReactArray : ReactValue, IEnumerable<ReactValue>
     public void RemoveAt(int index) => items.RemoveAt(index);
 
     /// <inheritdoc />
-    public IEnumerator<ReactValue> GetEnumerator() => items.GetEnumerator();
+    public IEnumerator<ComponentValue> GetEnumerator() => items.GetEnumerator();
 
     /// <inheritdoc />
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

@@ -26,7 +26,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Alethic.Node.AspNet.React\Alethic.Node.AspNet.React.csproj" />
+        <ProjectReference Include="..\Alethic.Node.AspNet.Components\Alethic.Node.AspNet.Components.csproj" />
     </ItemGroup>
 
 </Project>

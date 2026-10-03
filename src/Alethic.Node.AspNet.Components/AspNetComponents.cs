@@ -1,11 +1,11 @@
 using System;
 using System.Configuration;
 
-namespace Alethic.Node.AspNet.React;
+namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
-/// Where the application's React client is, and how its components render on the server: for every
-/// <see cref="ReactComponent"/> in the application.
+/// Where the application's client is, and how its components render on the server: for every
+/// <see cref="NodeComponent"/> in the application.
 /// </summary>
 /// <remarks>
 /// Read from the application's <c>appSettings</c> when first wanted, and settable from code, such as in
@@ -13,31 +13,31 @@ namespace Alethic.Node.AspNet.React;
 ///
 /// <list type="table">
 /// <listheader><term>App setting</term><description>Property</description></listheader>
-/// <item><term><c>Alethic:React:Script</c></term><description><see cref="Script"/></description></item>
-/// <item><term><c>Alethic:React:Stylesheet</c></term><description><see cref="Stylesheet"/></description></item>
-/// <item><term><c>Alethic:React:ScriptAttributes</c></term><description><see cref="ScriptAttributes"/></description></item>
-/// <item><term><c>Alethic:React:ServerBundle</c></term><description><see cref="ServerBundle"/></description></item>
-/// <item><term><c>Alethic:React:ServerRenderTimeout</c></term><description><see cref="ServerRenderTimeout"/>, as a <see cref="TimeSpan"/></description></item>
+/// <item><term><c>Alethic:Components:Script</c></term><description><see cref="Script"/></description></item>
+/// <item><term><c>Alethic:Components:Stylesheet</c></term><description><see cref="Stylesheet"/></description></item>
+/// <item><term><c>Alethic:Components:ScriptAttributes</c></term><description><see cref="ScriptAttributes"/></description></item>
+/// <item><term><c>Alethic:Components:ServerBundle</c></term><description><see cref="ServerBundle"/></description></item>
+/// <item><term><c>Alethic:Components:ServerRenderTimeout</c></term><description><see cref="ServerRenderTimeout"/>, as a <see cref="TimeSpan"/></description></item>
 /// </list>
 /// </remarks>
-public static class AspNetReact
+public static class AspNetComponents
 {
 
     /// <summary>
     /// The prefix of the app settings read.
     /// </summary>
-    const string SettingsPrefix = "Alethic:React:";
+    const string SettingsPrefix = "Alethic:Components:";
 
     /// <summary>
-    /// The client's browser entry: an ES module exporting <c>outlet</c> and each component a page may place. A path from
-    /// the application's root, <c>~/</c>, is stamped with the file's write time, so a new build is not served from a
-    /// browser's cache; any other URL is used as it is.
+    /// The client's browser entry: an ES module exporting <c>outlet</c> and each component a page may place. A path
+    /// from the application's root, <c>~/</c>, is stamped with the file's write time, so a new build is not served from
+    /// a browser's cache; any other URL is used as it is.
     /// </summary>
     public static string? Script { get; set; } = Setting("Script");
 
     /// <summary>
-    /// The client's stylesheet, linked once on each page with a component; none where <see langword="null"/>. Stamped as
-    /// <see cref="Script"/> is.
+    /// The client's stylesheet, linked once on each page with a component; none where <see langword="null"/>. Stamped
+    /// as <see cref="Script"/> is.
     /// </summary>
     public static string? Stylesheet { get; set; } = Setting("Stylesheet");
 
@@ -48,8 +48,8 @@ public static class AspNetReact
     public static string? ScriptAttributes { get; set; } = Setting("ScriptAttributes");
 
     /// <summary>
-    /// The client's server bundle: one self-contained CommonJS file exporting <c>renderOutlets</c>. Components render on
-    /// the server where this is set, and only in the browser where it is not. A path from the application's root,
+    /// The client's server bundle: one self-contained CommonJS file exporting <c>renderOutlets</c>. Components render
+    /// on the server where this is set, and only in the browser where it is not. A path from the application's root,
     /// <c>~/</c>, or an absolute one; somewhere nothing serves it, such as <c>~/App_Data</c>.
     /// </summary>
     public static string? ServerBundle { get; set; } = Setting("ServerBundle");

@@ -17,8 +17,8 @@
     <Project Path="src/Alethic.Node.Tests/Alethic.Node.Tests.csproj" />
     <Project Path="src/Alethic.Node.AspNet/Alethic.Node.AspNet.csproj" />
     <Project Path="src/Alethic.Node.AspNet.Tests/Alethic.Node.AspNet.Tests.csproj" />
-    <Project Path="src/Alethic.Node.AspNet.React/Alethic.Node.AspNet.React.csproj" />
-    <Project Path="src/Alethic.Node.AspNet.React.Tests/Alethic.Node.AspNet.React.Tests.csproj" />
+    <Project Path="src/Alethic.Node.AspNet.Components/Alethic.Node.AspNet.Components.csproj" />
+    <Project Path="src/Alethic.Node.AspNet.Components.Tests/Alethic.Node.AspNet.Components.Tests.csproj" />
     <Project Path="src/Alethic.Node.AspNetCore/Alethic.Node.AspNetCore.csproj" />
     <Project Path="src/Alethic.Node.AspNetCore.Tests/Alethic.Node.AspNetCore.Tests.csproj" />
   </Folder>

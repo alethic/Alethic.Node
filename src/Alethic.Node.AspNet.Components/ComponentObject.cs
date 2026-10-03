@@ -2,23 +2,23 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text.Json;
 
-namespace Alethic.Node.AspNet.React;
+namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
-/// An object in a <see cref="ReactComponent"/>'s props: values by key, in the order they were set.
+/// An object in a <see cref="NodeComponent"/>'s props: values by key, in the order they were set.
 /// </summary>
-public sealed class ReactObject : ReactValue, IEnumerable<KeyValuePair<string, ReactValue>>
+public sealed class ComponentObject : ComponentValue, IEnumerable<KeyValuePair<string, ComponentValue>>
 {
 
     readonly List<string> order = [];
-    readonly Dictionary<string, ReactValue> values = [];
+    readonly Dictionary<string, ComponentValue> values = [];
 
     /// <summary>
     /// The value at a key; <see langword="null"/> where there is none. Setting <see langword="null"/> sets the value
     /// <c>null</c>; <see cref="Remove"/> takes the key away.
     /// </summary>
     /// <param name="name">The key.</param>
-    public override ReactValue? this[string name]
+    public override ComponentValue? this[string name]
     {
         get => values.TryGetValue(name, out var value) ? value : null;
         set
@@ -26,7 +26,7 @@ public sealed class ReactObject : ReactValue, IEnumerable<KeyValuePair<string, R
             if (values.ContainsKey(name) == false)
                 order.Add(name);
 
-            values[name] = value ?? new ReactScalar(null);
+            values[name] = value ?? new ComponentScalar(null);
         }
     }
 
@@ -42,11 +42,11 @@ public sealed class ReactObject : ReactValue, IEnumerable<KeyValuePair<string, R
     public bool ContainsKey(string name) => values.ContainsKey(name);
 
     /// <summary>
-    /// Sets a value, for collection initializers: <c>new ReactObject { { "title", "Pipettes" } }</c>.
+    /// Sets a value, for collection initializers: <c>new ComponentObject { { "title", "Pipettes" } }</c>.
     /// </summary>
     /// <param name="name">The key.</param>
     /// <param name="value">The value.</param>
-    public void Add(string name, ReactValue? value) => this[name] = value;
+    public void Add(string name, ComponentValue? value) => this[name] = value;
 
     /// <summary>
     /// Takes a key away, so the component's default applies.
@@ -60,10 +60,10 @@ public sealed class ReactObject : ReactValue, IEnumerable<KeyValuePair<string, R
     }
 
     /// <inheritdoc />
-    public IEnumerator<KeyValuePair<string, ReactValue>> GetEnumerator()
+    public IEnumerator<KeyValuePair<string, ComponentValue>> GetEnumerator()
     {
         foreach (var name in order)
-            yield return new KeyValuePair<string, ReactValue>(name, values[name]);
+            yield return new KeyValuePair<string, ComponentValue>(name, values[name]);
     }
 
     /// <inheritdoc />

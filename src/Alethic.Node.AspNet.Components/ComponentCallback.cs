@@ -1,12 +1,12 @@
 using System.Web.UI;
 
-namespace Alethic.Node.AspNet.React;
+namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
-/// A callback prop of a <see cref="ReactComponent"/>, declared in markup among its <see cref="ReactProp"/>s: the
+/// A callback prop of a <see cref="NodeComponent"/>, declared in markup among its <see cref="ComponentProp"/>s: the
 /// function at <see cref="Name"/> raises the control's command named <see cref="CommandName"/>.
 /// </summary>
-public class ReactCallback : Control
+public class ComponentCallback : Control
 {
 
     /// <summary>
@@ -15,7 +15,7 @@ public class ReactCallback : Control
     public string? Name { get; set; }
 
     /// <summary>
-    /// The name it raises: what the page dispatches on in its handler of <see cref="ReactComponent.Command"/>.
+    /// The name it raises: what the page dispatches on in its handler of <see cref="NodeComponent.Command"/>.
     /// </summary>
     public string? CommandName { get; set; }
 

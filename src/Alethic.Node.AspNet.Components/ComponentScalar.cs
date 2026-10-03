@@ -1,12 +1,12 @@
 using System;
 using System.Text.Json;
 
-namespace Alethic.Node.AspNet.React;
+namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
-/// A string, number, boolean or <c>null</c> in a <see cref="ReactComponent"/>'s props.
+/// A string, number, boolean or <c>null</c> in a <see cref="NodeComponent"/>'s props.
 /// </summary>
-public sealed class ReactScalar : ReactValue
+public sealed class ComponentScalar : ComponentValue
 {
 
     readonly object? value;
@@ -16,7 +16,7 @@ public sealed class ReactScalar : ReactValue
     /// </summary>
     /// <param name="value">A string, a number, a boolean, a <see cref="JsonElement"/> holding one, or
     /// <see langword="null"/>.</param>
-    public ReactScalar(object? value)
+    public ComponentScalar(object? value)
     {
         this.value = value;
     }
