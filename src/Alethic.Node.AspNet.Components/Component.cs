@@ -15,9 +15,10 @@ namespace Alethic.Node.AspNet.Components;
 /// Hosts a JavaScript component on a Web Forms page.
 /// </summary>
 /// <remarks>
-/// Renders an element, and a script that imports a module, <see cref="Module"/>, finds the component in it by
-/// <see cref="Name"/>, and places it in the element with the module's <c>outlet</c> function, which renders it however
-/// the module chooses. The page links the module's stylesheet, where it has one, as it links any other.
+/// Renders an element, and a script that imports a module, <see cref="Module"/>, or, where it has none, takes the
+/// page's global scope as the module; finds the component in it by <see cref="Name"/>; and places it in the element with
+/// the module's <c>outlet</c> function, which renders it however the module chooses. The page links the module's
+/// stylesheet, where it has one, as it links any other.
 ///
 /// The component's props are <see cref="Props"/>: declared in markup with nested <see cref="ComponentProp"/>s, which
 /// build it on <c>Init</c>, as an <c>asp:ListItem</c> builds a list's items, and changed from code from there on. Props
@@ -135,7 +136,9 @@ public class Component : WebControl, IPostBackEventHandler
     /// <summary>
     /// The browser's module: an ES module exporting <c>outlet</c>, and the component <see cref="Name"/> names. A path
     /// from the application's root, <c>~/</c>, must be there, and is stamped with the file's write time so that a new
-    /// build is not served from a browser's cache; any other URL or specifier is imported as it is. Required.
+    /// build is not served from a browser's cache; any other URL or specifier is imported as it is. Where it is not
+    /// set, the module is the page's global scope: <c>outlet</c> and the component are what the page's own scripts put
+    /// there, before the control's script runs, at the end of the form.
     /// </summary>
     public string? Module { get; set; }
 
@@ -256,11 +259,12 @@ public class Component : WebControl, IPostBackEventHandler
         if (string.IsNullOrEmpty(Name))
             throw new InvalidOperationException($"Component '{ID}' needs a Name, the name of an export of the client.");
 
-        if (string.IsNullOrEmpty(Module))
-            throw new InvalidOperationException($"Component '{ID}' needs a Module, the browser's module to import it from.");
-
-        var module = Url(Module!)
-            ?? throw new InvalidOperationException($"Component '{ID}': the module is not built: there is no {Module}.");
+        // The module, imported where there is one; otherwise the page's global scope, as it is.
+        var global = string.IsNullOrEmpty(Module);
+        var load = global
+            ? "Promise.resolve(globalThis)"
+            : "import(" + ToScript(Url(Module!) ?? throw new InvalidOperationException($"Component '{ID}': the module is not built: there is no {Module}.")) + ")";
+        var described = global ? "The page's global scope" : Module;
 
         // The function each callback raises its command through, in the browser. It answers with a promise of the
         // command's result: resolved when the partial postback the command made comes back, with the result the server
@@ -285,15 +289,16 @@ public class Component : WebControl, IPostBackEventHandler
         WriteScript(props, Props);
         var attributes = string.IsNullOrWhiteSpace(ScriptAttributes) ? "" : " " + ScriptAttributes!.Trim();
         _outletScript = string.Format(
-            "<script{0}>import({1}).then(function (m) {{ var x = {3}.reduce(function (o, k) {{ return o == null ? undefined : o[k]; }}, m); if (x == null) throw new Error({6}); var d = {2}; var c = function (n) {{ var f = function () {{ return d(n, Array.prototype.slice.call(arguments)); }}; Object.defineProperty(f, 'name', {{ value: n }}); return f; }}; {7} var e = document.getElementById({4}); r.place(e, function () {{ return m.outlet(x, e, {5}); }}); }});</script>",
+            "<script{0}>{1}.then(function (m) {{ var x = {3}.reduce(function (o, k) {{ return o == null ? undefined : o[k]; }}, m); if (x == null) throw new Error({6}); if (typeof m.outlet !== 'function') throw new Error({8}); var d = {2}; var c = function (n) {{ var f = function () {{ return d(n, Array.prototype.slice.call(arguments)); }}; Object.defineProperty(f, 'name', {{ value: n }}); return f; }}; {7} var e = document.getElementById({4}); r.place(e, function () {{ return m.outlet(x, e, {5}); }}); }});</script>",
             attributes,
-            ToScript(module),
+            load,
             dispatch,
             ToScript(Name!.Split('.')),
             ToScript(ClientID),
             props,
-            ToScript($"{Module} has no {Name}."),
-            PlacedScript);
+            ToScript($"{described} has no {Name}."),
+            PlacedScript,
+            ToScript($"{described} has no outlet function."));
 
         if (ScriptManager.GetCurrent(Page) is ScriptManager scriptManager)
         {

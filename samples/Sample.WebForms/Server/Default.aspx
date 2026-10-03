@@ -15,6 +15,7 @@
         <li><a href="/Async.aspx">Async page</a>: the server render as an async page task, and a command answered asynchronously.</li>
         <li><a href="/Sync.aspx">Sync page</a>: the same, on a page that is not asynchronous.</li>
         <li><a href="/Errors.aspx">Errors</a>: what becomes of a component that fails on the server.</li>
+        <li><a href="/Globals.aspx">Global scope</a>: a component with no module, from a plain script's globals.</li>
         <li><a href="/Demo.aspx">Demo</a>: a catalog in a <code>Repeater</code>, with a cart the header's badge shares.</li>
     </ul>
 

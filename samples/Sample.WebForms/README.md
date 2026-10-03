@@ -11,6 +11,7 @@ Alethic.Node.AspNet.Components. Each page shows one of the ways Web Forms can dr
 | `Async.aspx` | An `Async="true"` page: the server render as an async page task, an in-process `fetch` of `Time.ashx` as the visitor, and a command answered with a `Task`. |
 | `Sync.aspx` | The same on a page that is not asynchronous: the server render blocks, and a command answered with a `Task` fails, telling the component why. |
 | `Errors.aspx` | A component that throws, or whose command's handler throws, failing the page with a `ComponentRenderException`. |
+| `Globals.aspx` | A component with no `Module`: its `outlet` and component are globals a plain script defines, with no framework, rendering only in the browser, its command still answered. |
 | `Demo.aspx` | A catalog in a `Repeater` inside an `UpdatePanel`. Products are bound to their components, commands bubble to `ItemCommand`, and a cart is shared with the master page's badge through the page's single React tree. |
 
 ## Layout

@@ -18,6 +18,7 @@
                 <a href="/Async.aspx">Async page</a>
                 <a href="/Sync.aspx">Sync page</a>
                 <a href="/Errors.aspx">Errors</a>
+                <a href="/Globals.aspx">Global scope</a>
                 <a href="/Demo.aspx">Demo</a>
             </nav>
             <%-- On every page, outside any UpdatePanel: its count comes from code, and on the demo from the page's

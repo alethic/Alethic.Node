@@ -10,7 +10,8 @@ Lets an ASP.NET Web Forms page host JavaScript components — React, or any othe
 
 A control names a component by two things: the **module** it is in, and its **name** within that module. Each side has
 its own module, because each side has its own build:
-- **`Module`**, for the browser: an ES module that exports `outlet` and the components.
+- **`Module`**, for the browser: an ES module that exports `outlet` and the components; or, where it is not set, the
+  page's global scope, where the page's own scripts put them.
 - **`ServerModule`**, for the server: a CommonJS file that exports `render` and the same components.
 
 Both follow the contract under [The modules](#the-modules).
@@ -80,7 +81,7 @@ Beside `Props` and `OnClientCommand`:
 
 | Property | |
 | --- | --- |
-| `Module` | The browser's module. Required. A `~/` path must be there, and is stamped with its write time; any other URL or specifier is imported as it is. |
+| `Module` | The browser's module. A `~/` path must be there, and is stamped with its write time; any other URL or specifier is imported as it is. Not set, the module is the page's global scope: `outlet` and the component are what the page's own scripts put there. |
 | `ServerModule` | The server's module, `require`d by Node in the worker process. A `~/` or absolute path, which must be there. Without it the component renders only in the browser. |
 | `Name` | The component: an export of the module, or a dotted path through one, as `Catalog.ProductCard`. Found in `Module` in the browser and in `ServerModule` on the server. |
 | `ServerRender` | Whether this component renders on the server, where there is a `ServerModule`. `true` unless set. |
@@ -126,7 +127,8 @@ where it is wanted.
 
 ### `outlet(component, element, props)`
 
-Exported by the browser's module.
+Exported by the browser's module, or, for a control with no `Module`, defined in the page's global scope by the page's
+own scripts before the control's script runs, at the end of the form.
 
 - **`component`** is what `Name` found in the module.
 - **`element`** is the control's element. It holds the server's HTML where the component rendered on the server.
