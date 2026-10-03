@@ -43,12 +43,6 @@ jobs:
         versionSpec: 6.x
     - name: Execute GitVersion
       uses: gittools/actions/gitversion/execute@v4
-    - name: Add NuGet Source (GitHub)
-      shell: pwsh
-      run: dotnet nuget add source --username USERNAME --password $env:GITHUB_TOKEN --store-password-in-clear-text --name ${{ github.repository_owner }} $env:GITHUB_REPOS
-      env:
-        GITHUB_REPOS: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - name: NuGet Restore
       run: dotnet restore Alethic.Node.slnx
     - name: Build
@@ -127,12 +121,6 @@ jobs:
       uses: actions/setup-dotnet@v6
       with:
         dotnet-version: 10.0.x
-    - name: Add NuGet Source (GitHub)
-      shell: pwsh
-      run: dotnet nuget add source --username USERNAME --password $env:GITHUB_TOKEN --store-password-in-clear-text --name ${{ github.repository_owner }} $env:GITHUB_REPOS
-      env:
-        GITHUB_REPOS: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - name: Download Tests
       uses: actions/download-artifact@v8
       with:
@@ -213,7 +201,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # Gates both the GitHub release and the nuget.org push: true for a tag build or a manual run that
-      # asks to publish. The GitHub Packages push is not gated and runs on every non-PR build.
+      # asks to publish.
       PUBLISH: ${{ github.ref_type == 'tag' || inputs.publish == true }}
     steps:
     - name: Checkout Source
@@ -252,13 +240,6 @@ jobs:
         prerelease: ${{ contains(steps.GitVersion.outputs.semVer, '-') }}
         makeLatest: ${{ !contains(steps.GitVersion.outputs.semVer, '-') }}
         token: ${{ secrets.GITHUB_TOKEN }}
-    - name: Push NuGet (GitHub)
-      if: github.event_name != 'pull_request'
-      shell: pwsh
-      run: dotnet nuget push dist/nuget/*.nupkg --source $env:GITHUB_REPOS --api-key $env:GITHUB_TOKEN --skip-duplicate
-      env:
-        GITHUB_REPOS: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     # --skip-duplicate makes pushing a version nuget.org already has a no-op.
     - name: Push NuGet
       if: env.PUBLISH == 'true'
