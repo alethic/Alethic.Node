@@ -4,7 +4,7 @@ Node embedded in a .NET process, through [node-api-dotnet](https://github.com/mi
 sidecar process, no IPC. It is libnode, and the package says so: there is no runtime abstraction here.
 
 For any host: .NET 8 and 9, and .NET Framework 4.7.2 and later, so an ASP.NET Web Forms application can use it as
-well as a console or a service. [Alethic.AspNetCore.Node](https://www.nuget.org/packages/Alethic.AspNetCore.Node)
+well as a console or a service. [Alethic.Node.AspNetCore](https://www.nuget.org/packages/Alethic.Node.AspNetCore)
 builds server-side rendering for ASP.NET Core on it.
 
 ## Two things

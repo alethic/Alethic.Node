@@ -6,8 +6,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Alethic.AspNetCore.Node;
-using Alethic.Node;
+using Alethic.Node.AspNetCore;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -17,7 +16,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace Alethic.AspNetCore.Node.Tests;
+namespace Alethic.Node.AspNetCore.Tests;
 
 /// <summary>
 /// Drives the endpoint layer through a real server, against a real request handler.

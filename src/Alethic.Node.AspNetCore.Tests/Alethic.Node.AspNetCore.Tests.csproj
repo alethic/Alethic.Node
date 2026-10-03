@@ -33,7 +33,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Alethic.AspNetCore.Node\Alethic.AspNetCore.Node.csproj" />
+        <ProjectReference Include="..\Alethic.Node.AspNetCore\Alethic.Node.AspNetCore.csproj" />
     </ItemGroup>
 
 </Project>

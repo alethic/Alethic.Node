@@ -1,4 +1,4 @@
-namespace Alethic.AspNetCore.Node;
+namespace Alethic.Node.AspNetCore;
 
 /// <summary>
 /// How a route read out of a JavaScript application's router expects to be rendered.

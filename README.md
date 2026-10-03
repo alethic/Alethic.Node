@@ -1,12 +1,14 @@
-# Alethic.AspNetCore.Node
+# Alethic.Node
 
-Server-side rendering for ASP.NET Core, on a real Node runtime embedded in the process through
-[node-api-dotnet](https://github.com/microsoft/node-api-dotnet). No sidecar process, no HTTP hop.
+A real Node runtime embedded in a .NET process, through [node-api-dotnet](https://github.com/microsoft/node-api-dotnet).
+No sidecar process, no HTTP hop.
 
-Two packages. **Alethic.Node** is the engines: a pool of libnode runtimes and Node's own modules, for any host,
-.NET Framework 4.7.2 included — a console, a service, an ASP.NET Web Forms site. **Alethic.AspNetCore.Node** is the
-web on top of it: the request handler and the endpoint mapping, for ASP.NET Core. The engine types live in the
-`Alethic.Node` namespace, so code that names the pool says `using Alethic.Node;` as well.
+**Alethic.Node** is the engines: a pool of libnode runtimes and Node's own modules, for any host, .NET Framework 4.7.2
+included — a console, a service, an ASP.NET Web Forms site. The hosts build on it:
+
+- **Alethic.Node.AspNetCore** — server-side rendering for ASP.NET Core: the request handler and the endpoint mapping.
+  It was published as Alethic.AspNetCore.Node until 2.0; its types moved from that namespace to
+  `Alethic.Node.AspNetCore`, and the engines' to `Alethic.Node`.
 
 The repository previously carried a fork of MintPlayer.AspNetCore.SpaServices, the community
 continuation of Microsoft's SpaServices.Extensions. That model — JSON-RPC into a Node child

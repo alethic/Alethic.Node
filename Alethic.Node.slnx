@@ -1,9 +1,9 @@
 <Solution>
   <Folder Name="/Solution Items/">
     <File Path=".gitattributes" />
-    <File Path=".github/workflows/Alethic.AspNetCore.Node.yml" />
+    <File Path=".github/workflows/Alethic.Node.AspNetCore.yml" />
     <File Path=".gitignore" />
-    <File Path="Alethic.AspNetCore.Node.dist.msbuildproj" />
+    <File Path="Alethic.Node.AspNetCore.dist.msbuildproj" />
     <File Path="Directory.Build.props" />
     <File Path="Directory.Build.targets" />
     <File Path="GitVersion.yml" />
@@ -15,8 +15,8 @@
   <Folder Name="/src/">
     <Project Path="src/Alethic.Node/Alethic.Node.csproj" />
     <Project Path="src/Alethic.Node.Tests/Alethic.Node.Tests.csproj" />
-    <Project Path="src/Alethic.AspNetCore.Node/Alethic.AspNetCore.Node.csproj" />
-    <Project Path="src/Alethic.AspNetCore.Node.Tests/Alethic.AspNetCore.Node.Tests.csproj" />
+    <Project Path="src/Alethic.Node.AspNetCore/Alethic.Node.AspNetCore.csproj" />
+    <Project Path="src/Alethic.Node.AspNetCore.Tests/Alethic.Node.AspNetCore.Tests.csproj" />
   </Folder>
   <Folder Name="/src/dist/">
     <Project Path="src/dist-nuget/dist-nuget.csproj" />

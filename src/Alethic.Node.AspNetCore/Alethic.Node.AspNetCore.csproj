@@ -14,7 +14,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <InternalsVisibleTo Include="Alethic.AspNetCore.Node.Tests" />
+        <InternalsVisibleTo Include="Alethic.Node.AspNetCore.Tests" />
     </ItemGroup>
 
     <ItemGroup>

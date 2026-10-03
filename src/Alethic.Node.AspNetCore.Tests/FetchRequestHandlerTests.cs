@@ -11,9 +11,8 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Alethic.Node;
 
-namespace Alethic.AspNetCore.Node.Tests;
+namespace Alethic.Node.AspNetCore.Tests;
 
 /// <summary>
 /// Exercises the request handler through its interface: HTTP in, HTTP out.

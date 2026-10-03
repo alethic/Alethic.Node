@@ -1,6 +1,6 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace Alethic.AspNetCore.Node.Tests;
+namespace Alethic.Node.AspNetCore.Tests;
 
 /// <summary>
 /// Exercises the one place URLPattern meets ASP.NET template syntax. Pure logic; no engine.

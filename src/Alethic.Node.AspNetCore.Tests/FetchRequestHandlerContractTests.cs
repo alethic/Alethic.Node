@@ -4,9 +4,8 @@ using System.Threading.Tasks;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Alethic.Node;
 
-namespace Alethic.AspNetCore.Node.Tests;
+namespace Alethic.Node.AspNetCore.Tests;
 
 /// <summary>
 /// Exercises the entry contract's optional shapes: a bare function as the default export, the

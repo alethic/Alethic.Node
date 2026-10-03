@@ -1,4 +1,4 @@
-namespace Alethic.AspNetCore.Node;
+namespace Alethic.Node.AspNetCore;
 
 /// <summary>
 /// One route an <see cref="INodeRouteProvider"/> read out of an application.

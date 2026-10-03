@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Http;
 
-namespace Alethic.AspNetCore.Node.Tests;
+namespace Alethic.Node.AspNetCore.Tests;
 
 /// <summary>
 /// Drives a handler the way an endpoint does, and reads back what it answered.

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Alethic.AspNetCore.Node;
+using Alethic.Node.AspNetCore;
 
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -75,7 +75,7 @@ public static class NodeEndpointRouteBuilderExtensions
         ArgumentNullException.ThrowIfNull(handler);
         options ??= new MapNodeOptions();
 
-        var logger = endpoints.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Alethic.AspNetCore.Node");
+        var logger = endpoints.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Alethic.Node.AspNetCore");
 
         // no synchronization context exists during endpoint configuration, so blocking here cannot deadlock
         handler.PrepareAsync().GetAwaiter().GetResult();

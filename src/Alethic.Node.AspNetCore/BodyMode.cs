@@ -1,4 +1,4 @@
-namespace Alethic.AspNetCore.Node;
+namespace Alethic.Node.AspNetCore;
 
 /// <summary>
 /// How a body crosses between the host and the application.

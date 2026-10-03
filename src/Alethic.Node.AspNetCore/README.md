@@ -1,4 +1,4 @@
-# Alethic.AspNetCore.Node
+# Alethic.Node.AspNetCore
 
 Server-side rendering for ASP.NET Core on a real Node runtime embedded in the .NET process, through
 [node-api-dotnet](https://github.com/microsoft/node-api-dotnet). No sidecar process, no HTTP hop.

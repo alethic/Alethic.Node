@@ -11,9 +11,8 @@ using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JavaScript.NodeApi;
-using Alethic.Node;
 
-namespace Alethic.AspNetCore.Node;
+namespace Alethic.Node.AspNetCore;
 
 /// <summary>
 /// Renders by calling the application's <c>fetch</c> handler, on a Node engine pool.
@@ -63,7 +62,7 @@ public class FetchRequestHandler : INodeRequestHandler
         ({
             waitUntil(promise) {
                 Promise.resolve(promise).catch(e =>
-                    console.error('[Alethic.AspNetCore.Node] waitUntil rejected:', e));
+                    console.error('[Alethic.Node.AspNetCore] waitUntil rejected:', e));
             },
             passThroughOnException() { },
         })

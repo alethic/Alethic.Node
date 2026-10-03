@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Alethic.AspNetCore.Node;
+namespace Alethic.Node.AspNetCore;
 
 /// <summary>
 /// Tells the host what routes an application serves.

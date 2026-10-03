@@ -1,6 +1,6 @@
 using System;
 
-namespace Alethic.AspNetCore.Node;
+namespace Alethic.Node.AspNetCore;
 
 /// <summary>
 /// Converts URLPattern pathname syntax to ASP.NET route templates.

@@ -2,9 +2,8 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Http;
-using Alethic.Node;
 
-namespace Alethic.AspNetCore.Node;
+namespace Alethic.Node.AspNetCore;
 
 /// <summary>
 /// Answers HTTP requests from an application on the embedded Node runtime.

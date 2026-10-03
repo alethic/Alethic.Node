@@ -1,4 +1,4 @@
-using Alethic.AspNetCore.Node;
+using Alethic.Node.AspNetCore;
 using Alethic.Node;
 
 using Microsoft.JavaScript.NodeApi;

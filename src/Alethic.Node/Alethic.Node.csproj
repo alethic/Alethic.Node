@@ -2,7 +2,7 @@
 
     <PropertyGroup>
         <TargetFrameworks>net472;net8.0;net9.0</TargetFrameworks>
-        <Description>Node embedded in a .NET process through node-api-dotnet: a pool of engines, each a libnode runtime on a thread of its own, running modules loaded with Node's own require. For any host, .NET Framework included; Alethic.AspNetCore.Node builds server-side rendering for ASP.NET Core on it.</Description>
+        <Description>Node embedded in a .NET process through node-api-dotnet: a pool of engines, each a libnode runtime on a thread of its own, running modules loaded with Node's own require. For any host, .NET Framework included; Alethic.Node.AspNetCore builds server-side rendering for ASP.NET Core on it.</Description>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>icon.png</PackageIcon>
         <PackageTags>javascript;node;libnode;node-api</PackageTags>
@@ -15,7 +15,7 @@
 
     <ItemGroup>
         <InternalsVisibleTo Include="Alethic.Node.Tests" />
-        <InternalsVisibleTo Include="Alethic.AspNetCore.Node.Tests" />
+        <InternalsVisibleTo Include="Alethic.Node.AspNetCore.Tests" />
     </ItemGroup>
 
     <ItemGroup>

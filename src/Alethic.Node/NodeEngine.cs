@@ -32,7 +32,7 @@ sealed class NodeEngine : IAsyncDisposable
     const string MainScript =
         "globalThis.require = require('module').createRequire(process.execPath);\n" +
         "process.on('unhandledRejection', (reason) => {\n" +
-        "    console.error('[Alethic.AspNetCore.Node] unhandled promise rejection:', reason);\n" +
+        "    console.error('[Alethic.Node] unhandled promise rejection:', reason);\n" +
         "});\n" +
         TrackTimersScript;
 

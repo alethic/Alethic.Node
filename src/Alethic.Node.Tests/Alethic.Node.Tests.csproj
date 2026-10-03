@@ -14,7 +14,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <!-- As in Alethic.AspNetCore.Node.Tests: declared so a build under MSTest.Sdk 4 carries the VSTest testhost CI's
+        <!-- As in Alethic.Node.AspNetCore.Tests: declared so a build under MSTest.Sdk 4 carries the VSTest testhost CI's
              `dotnet test <dll>` runs. -->
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />

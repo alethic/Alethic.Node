@@ -2,7 +2,7 @@ using System;
 
 using Microsoft.AspNetCore.Builder;
 
-namespace Alethic.AspNetCore.Node;
+namespace Alethic.Node.AspNetCore;
 
 /// <summary>
 /// Describes how a request handler is mounted into the endpoint table.
