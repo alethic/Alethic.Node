@@ -132,11 +132,12 @@ Exported by the browser's module.
 - **`element`** is the control's element. It holds the server's HTML where the component rendered on the server.
 - **`props`** are the component's props. Each callback is already a function returning a promise of the command's
   result; pass it through.
-- **It returns** a function that removes the component. The control never calls it.
+- **It returns** a function that removes the component. The control calls it when the element leaves the page, by a
+  partial postback's new markup or by any script, and before it places a component in the same element again, so the
+  module need not watch the page.
 
 The control calls `outlet` from a script it registers with the page's `ScriptManager` where there is one, so it calls
-it again for the same element id after every partial postback that renders the control. Noticing that an element has
-left the page, and unmounting what was in it, is the module's job.
+it again after every partial postback that renders the control.
 
 ```tsx
 import { createRoot } from "react-dom/client";

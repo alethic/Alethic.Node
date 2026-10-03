@@ -28,6 +28,10 @@ namespace Alethic.Node.AspNet.Components;
 /// <see cref="Command"/>, to which the command posts back; inside an <see cref="UpdatePanel"/> the postback is a
 /// partial one, as for any control in it.
 ///
+/// The script calls the function the module's <c>outlet</c> returns when the component's element leaves the page, by a
+/// partial postback's new markup or by any script, or before it places a component in the same element again: the
+/// module need not watch the page.
+///
 /// On a page with a <see cref="ScriptManager"/> the script is registered with it rather than written after the element,
 /// so that a control inside an <see cref="UpdatePanel"/> places its component again after a partial postback: the
 /// panel's new markup arrives without running the scripts in it, but registered scripts run. That is also why the
@@ -55,6 +59,20 @@ namespace Alethic.Node.AspNet.Components;
 [ControlBuilder(typeof(ComponentPropsBuilder))]
 public class Component : WebControl, IPostBackEventHandler
 {
+
+    /// <summary>
+    /// The page's placed components, made by the first outlet script on it: each component's element, and the function
+    /// its module's <c>outlet</c> returned, which is called when the element leaves the page, or before a component is
+    /// placed in the same element again. A <c>MutationObserver</c> sees elements leave, by a partial postback's new markup
+    /// or by any script.
+    /// </summary>
+    const string PlacedScript =
+        "var r = window.__alethicNodeComponents || (window.__alethicNodeComponents = (function () { " +
+        "var placed = new Map(); " +
+        "var remove = function (e) { var f = placed.get(e); placed.delete(e); if (typeof f === 'function') { try { f(); } catch (x) { console.error(x); } } }; " +
+        "new MutationObserver(function () { placed.forEach(function (f, e) { if (e.isConnected === false) remove(e); }); }).observe(document, { childList: true, subtree: true }); " +
+        "return { place: function (e, outlet) { remove(e); placed.set(e, outlet()); } }; " +
+        "})());";
 
     /// <summary>
     /// The page's server renders, by the server module each is for: the controls each renders in one call.
@@ -267,14 +285,15 @@ public class Component : WebControl, IPostBackEventHandler
         WriteScript(props, Props);
         var attributes = string.IsNullOrWhiteSpace(ScriptAttributes) ? "" : " " + ScriptAttributes!.Trim();
         _outletScript = string.Format(
-            "<script{0}>import({1}).then(function (m) {{ var x = {3}.reduce(function (o, k) {{ return o == null ? undefined : o[k]; }}, m); if (x == null) throw new Error({6}); var d = {2}; var c = function (n) {{ var f = function () {{ return d(n, Array.prototype.slice.call(arguments)); }}; Object.defineProperty(f, 'name', {{ value: n }}); return f; }}; m.outlet(x, document.getElementById({4}), {5}); }});</script>",
+            "<script{0}>import({1}).then(function (m) {{ var x = {3}.reduce(function (o, k) {{ return o == null ? undefined : o[k]; }}, m); if (x == null) throw new Error({6}); var d = {2}; var c = function (n) {{ var f = function () {{ return d(n, Array.prototype.slice.call(arguments)); }}; Object.defineProperty(f, 'name', {{ value: n }}); return f; }}; {7} var e = document.getElementById({4}); r.place(e, function () {{ return m.outlet(x, e, {5}); }}); }});</script>",
             attributes,
             ToScript(module),
             dispatch,
             ToScript(Name!.Split('.')),
             ToScript(ClientID),
             props,
-            ToScript($"{Module} has no {Name}."));
+            ToScript($"{Module} has no {Name}."),
+            PlacedScript);
 
         if (ScriptManager.GetCurrent(Page) is ScriptManager scriptManager)
         {

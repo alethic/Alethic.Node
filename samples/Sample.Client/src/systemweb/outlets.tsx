@@ -11,10 +11,9 @@ import { createRoot } from "react-dom/client";
  * router: navigating is the page's business.
  *
  * The browser entry exports the `outlet` this makes, beside the components. `Component` writes the
- * import, finds the component in the module by the name the page gave it, and calls `outlet` with it:
- *
- *     import("/components/client.js").then(m =>
- *         m.outlet(m.Greeting, document.getElementById("…"), { name: "Ada" }));
+ * import, finds the component in the module by the name the page gave it, and calls `outlet` with it. It
+ * calls the function `outlet` returns when the component's element leaves the page, or before it places a
+ * component in the same element again.
  *
  * Where the server rendered the component first, its HTML stays on show until the component has
  * rendered here, and is then replaced by it. Not hydration: the tree is one, rendered through portals,
@@ -139,14 +138,6 @@ export function createOutlets(options: OutletOptions = {}): Outlet {
     function start() {
         started = true;
 
-        // An UpdatePanel's partial postback, or any script, can take a placement's element off the page; the
-        // component goes with it.
-        new MutationObserver(() => {
-            if (placements.some(i => i.element.isConnected === false)) {
-                set(placements.filter(i => i.element.isConnected));
-            }
-        }).observe(document, { childList: true, subtree: true });
-
         const container = document.createElement("div");
         container.hidden = true;
         container.setAttribute("data-react-outlets", "");
@@ -168,7 +159,7 @@ export function createOutlets(options: OutletOptions = {}): Outlet {
         target.style.display = "contents";
 
         const added: Placement = { key: ++lastKey, component, element, target, props };
-        set([...placements.filter(i => i.element !== element), added]);
+        set([...placements, added]);
 
         return () => set(placements.filter(i => i !== added));
     };
