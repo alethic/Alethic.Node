@@ -15,8 +15,8 @@
     </ItemGroup>
 
     <ItemGroup Label="Native runtime, per platform. The umbrella package pulls every RID at once.">
-        <PackageReference Include="Microsoft.JavaScript.LibNode.win-x64" Version="20.1800.203" Condition=" $([MSBuild]::IsOSPlatform('Windows')) " />
-        <PackageReference Include="Microsoft.JavaScript.LibNode.linux-x64" Version="20.1800.203" Condition=" $([MSBuild]::IsOSPlatform('Linux')) " />
+        <PackageReference Include="Microsoft.JavaScript.LibNode.win-x64" Version="20.1800.215" Condition=" $([MSBuild]::IsOSPlatform('Windows')) " />
+        <PackageReference Include="Microsoft.JavaScript.LibNode.linux-x64" Version="20.1800.215" Condition=" $([MSBuild]::IsOSPlatform('Linux')) " />
     </ItemGroup>
 
     <ItemGroup>

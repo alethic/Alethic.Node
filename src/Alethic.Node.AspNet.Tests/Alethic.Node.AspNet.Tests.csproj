@@ -13,7 +13,7 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
-        <PackageReference Include="Microsoft.JavaScript.LibNode.win-x64" Version="20.1800.203" />
+        <PackageReference Include="Microsoft.JavaScript.LibNode.win-x64" Version="20.1800.215" />
     </ItemGroup>
 
     <ItemGroup>

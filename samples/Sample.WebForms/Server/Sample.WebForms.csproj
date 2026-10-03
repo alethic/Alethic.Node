@@ -33,7 +33,7 @@
 
     <ItemGroup>
         <PackageReference Include="Cogito.AspNet.MSBuild" Version="1.0.3" PrivateAssets="all" />
-        <PackageReference Include="Microsoft.JavaScript.LibNode.win-x64" Version="20.1800.203" />
+        <PackageReference Include="Microsoft.JavaScript.LibNode.win-x64" Version="20.1800.215" />
     </ItemGroup>
 
     <ItemGroup>
