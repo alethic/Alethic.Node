@@ -11,9 +11,10 @@
 
     <h2>Inside an UpdatePanel</h2>
     <p>
-        A postback the panel takes part in renders it again, and its component is placed again: it gets the page's new
-        props and starts its own count over. That is true of its own commands too, since the panel's children trigger it,
-        so its answer goes to the panel rather than to a component that is gone.
+        A postback the panel takes part in renders it again, and its component is placed again, in the panel's new
+        markup. The module updates the component it already has rather than making another, so it gets the page's new
+        props and keeps its own count. That is true of its own commands too, since the panel's children trigger it, and
+        its answer comes back to it. A full postback loads the page anew, and the count with it.
     </p>
     <asp:UpdatePanel ID="Panel" runat="server">
         <ContentTemplate>
