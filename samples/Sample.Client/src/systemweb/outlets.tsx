@@ -12,8 +12,9 @@ import { createRoot } from "react-dom/client";
  *
  * The browser entry exports the `outlet` this makes, beside the components. `Component` writes the
  * import, finds the component in the module by the name the page gave it, and calls `outlet` with it. It
- * calls the function `outlet` returns when the component's element leaves the page, or before it places a
- * component in the same element again.
+ * calls `remove` on what `outlet` returns when the component's element leaves the page, and `update` when
+ * the control is placed again, as a partial postback that renders it again does: the component keeps its
+ * place in the tree, so React keeps its state, and is given the new element and props.
  *
  * Where the server rendered the component first, its HTML stays on show until the component has
  * rendered here, and is then replaced by it. Not hydration: the tree is one, rendered through portals,
@@ -41,9 +42,18 @@ export type OutletOptions = {
  * @param component the component
  * @param element the element it appears in
  * @param props its props
- * @returns a function that removes it again
+ * @returns what removes it again, or moves it to a new element with new props
  */
-export type Outlet = (component: ComponentType<object>, element: Element, props: object) => () => void;
+export type Outlet = (component: ComponentType<object>, element: Element, props: object) => PlacedComponent;
+
+/** A component placed on the page. */
+export type PlacedComponent = {
+    /** Removes it. */
+    remove(): void;
+
+    /** Moves it to a new element, with new props, keeping its state. */
+    update(element: Element, props: object): void;
+};
 
 /** A place on the page where a component is to appear. */
 type Placement = {
@@ -158,9 +168,19 @@ export function createOutlets(options: OutletOptions = {}): Outlet {
         const target = document.createElement("div");
         target.style.display = "contents";
 
-        const added: Placement = { key: ++lastKey, component, element, target, props };
-        set([...placements, added]);
+        let placed: Placement = { key: ++lastKey, component, element, target, props };
+        set([...placements, placed]);
 
-        return () => set(placements.filter(i => i !== added));
+        return {
+            remove() {
+                set(placements.filter(i => i !== placed));
+            },
+            update(element, props) {
+                // The same key and box, so React keeps the component and its state.
+                const next = { ...placed, element, props };
+                set(placements.map(i => i === placed ? next : i));
+                placed = next;
+            },
+        };
     };
 }

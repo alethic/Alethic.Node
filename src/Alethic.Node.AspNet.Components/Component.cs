@@ -29,9 +29,10 @@ namespace Alethic.Node.AspNet.Components;
 /// partial one, as for any control in it.
 ///
 /// What does this in the browser is one script, <c>Components.js</c>, which the page is given once through
-/// <c>WebResource.axd</c>; each control writes only a call to it, with its own data. It calls the function the module's
-/// <c>outlet</c> returns when the component's element leaves the page, by a partial postback's new markup or by any
-/// script, or before it places a component in the same element again: the module need not watch the page.
+/// <c>WebResource.axd</c>; each control writes only a call to it, with its own data. It knows a component by its
+/// control: placed again, as after a partial postback that renders the control, the component is updated with its new
+/// element and props where the module's <c>outlet</c> gave it a way to be, and placed anew otherwise; and it is removed
+/// when its element leaves the page with nothing in its place. The module need not watch the page.
 ///
 /// On a page with a <see cref="ScriptManager"/> the control's call is registered with it rather than written after the
 /// element, so that a control inside an <see cref="UpdatePanel"/> places its component again after a partial postback:

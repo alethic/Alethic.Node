@@ -139,12 +139,22 @@ own scripts before the control's script runs, at the end of the form.
 - **`element`** is the control's element. It holds the server's HTML where the component rendered on the server.
 - **`props`** are the component's props. Each callback is already a function returning a promise of the command's
   result; pass it through.
-- **It returns** a function that removes the component. The control calls it when the element leaves the page, by a
-  partial postback's new markup or by any script, and before it places a component in the same element again, so the
-  module need not watch the page.
+- **It returns** a function that removes the component, or an object with `remove()` and, optionally,
+  `update(element, props)`.
 
-The control calls `outlet` from a script it registers with the page's `ScriptManager` where there is one, so it calls
-it again after every partial postback that renders the control.
+The control calls `outlet` from a script it registers with the page's `ScriptManager` where there is one, so the
+control is placed again after every partial postback that renders it, in a new element with new props. The library
+knows a component by its control, not by its element, and the module need not watch the page:
+
+- placed again with the same component from the same module, where there is an `update`, the library calls it with
+  the new element and props. The component is the same one, and what it holds in the browser lives on; how it moves to
+  the new element is the module's to decide.
+- placed again otherwise, the library removes it and calls `outlet` anew.
+- when its element leaves the page, by a partial postback's new markup or by any script, and no element with its id
+  has taken its place, the library removes it.
+
+Nothing is kept across a full postback, which loads the page anew: a component whose state should survive one passes
+it to the page with a callback, and the page gives it back as a prop.
 
 ```tsx
 import { createRoot } from "react-dom/client";
@@ -152,9 +162,19 @@ import { createRoot } from "react-dom/client";
 export * from "./components";
 
 export function outlet(Component, element, props) {
-    const root = createRoot(element);
+    const container = document.createElement("div");
+    element.replaceChildren(container);
+
+    const root = createRoot(container);
     root.render(<Component {...props} />);
-    return () => root.unmount();
+
+    return {
+        remove: () => root.unmount(),
+        update(next, props) {
+            next.replaceChildren(container);
+            root.render(<Component {...props} />);
+        },
+    };
 }
 ```
 
