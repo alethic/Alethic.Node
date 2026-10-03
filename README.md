@@ -12,6 +12,8 @@ included — a console, a service, an ASP.NET Web Forms site. The hosts build on
 - **Alethic.Node.AspNet** — Node in an ASP.NET (System.Web) application on .NET Framework: the application's pool,
   Node work done on behalf of a request with the request's thread serving what it asks of the site, and `fetch` of
   the site answered in process by the site's own handlers.
+- **Alethic.Node.AspNet.Components** — JavaScript components hosted on Web Forms pages: the `Component` control, its props
+  from markup and code, its callbacks as server commands, and its server render.
 
 The repository previously carried a fork of MintPlayer.AspNetCore.SpaServices, the community
 continuation of Microsoft's SpaServices.Extensions. That model — JSON-RPC into a Node child
@@ -178,8 +180,13 @@ var result = await pool.RunAsync(NodeModuleSource.FromFile("tool.cjs"), async ex
 
 - `samples/Sample.React` — the web path end to end: React 19 server rendering with suspended data
   resolved into the markup, client hydration over it, and a route provider reading the application's
-  own router to drive the endpoint table. Build the client with `npm run build` there, then
-  `dotnet run` the server.
+  own router to drive the endpoint table. `dotnet run` the server, which builds its client,
+  `samples/Sample.Client`, as it builds.
 - `samples/Sample.Console` — the pool with no web anywhere in sight: a console application takes a
   lease and drives a plain JavaScript module, synchronous calls, promises, and structured results
   alike, through ordinary node-api-dotnet.
+- `samples/Sample.WebForms` — React components on ASP.NET Web Forms pages with the `Component` control: props in markup,
+  bound and from code, full and partial postbacks, `UpdatePanel`s, async and sync pages, a `Repeater`, failures,
+  and a catalog sharing a cart with the master page. `dotnet run` it, which serves it with IIS Express.
+- `samples/Sample.Client` — the React client both web samples share: a Yarn project whose Vite build makes each
+  sample's browser and server bundles, which their server projects reference it for.

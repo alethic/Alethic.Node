@@ -1,0 +1,31 @@
+<Project>
+    <Import Sdk="Microsoft.VisualStudio.JavaScript.Sdk" Project="Sdk.props" />
+
+    <!--
+        The React client both samples use: built with Yarn into dist\, one folder per bundle, which the samples' server
+        projects reference this project for and copy where each serves it from.
+    -->
+
+    <PropertyGroup>
+        <ShouldRunNpmInstall>false</ShouldRunNpmInstall>
+        <ShouldRunBuildScript>true</ShouldRunBuildScript>
+        <BuildCommand Condition=" '$(Configuration)' == 'Release' ">yarn run build:release</BuildCommand>
+        <BuildCommand Condition=" '$(Configuration)' != 'Release' ">yarn run build</BuildCommand>
+        <BuildOutputFolder>$(MSBuildProjectDirectory)\dist</BuildOutputFolder>
+        <ResolveNuGetPackages>false</ResolveNuGetPackages>
+        <RestoreProjectStyle>None</RestoreProjectStyle>
+        <ImportGlobalAppSettings>false</ImportGlobalAppSettings>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Remove="dist\**\*" />
+    </ItemGroup>
+
+    <Target Name="YarnInstall" BeforeTargets="BeforeBuild">
+        <Exec Command="yarn install" />
+    </Target>
+
+    <Import Sdk="Microsoft.VisualStudio.JavaScript.Sdk" Project="Sdk.targets" />
+
+    <Target Name="_GetRequiredWorkloads" />
+</Project>

@@ -1,7 +1,12 @@
-import { renderToPipeableStream } from 'react-dom/server';
-import { PassThrough, Readable } from 'node:stream';
-import App, { loadPark } from './App.jsx';
-import { routes, match } from './router.jsx';
+import { PassThrough, Readable } from "node:stream";
+import { renderToPipeableStream } from "react-dom/server";
+import App, { loadPark } from "./App";
+import { match, routes } from "./router";
+
+/**
+ * The ASP.NET Core sample's server entry: a `fetch` handler, which Alethic.Node.AspNetCore's
+ * FetchRequestHandler serves, and the router its route provider reads.
+ */
 
 /**
  * Renders one request to a full document.
@@ -9,13 +14,15 @@ import { routes, match } from './router.jsx';
  * onAllReady rather than onShellReady: this sample optimizes for crawlers, so the suspended park
  * content must be in the markup rather than streamed in behind it. A page meant for people first
  * would flip that switch and stream its shell.
+ * @param url the request's URL
+ * @param signal aborts the render
  */
-function render(url, signal) {
+function render(url: URL, signal: AbortSignal) {
     const path = url.pathname;
     const matched = match(path);
 
     // The route decides what to load, so adding a route is one edit rather than three.
-    const parkRef = matched?.route.id === 'park' ? matched.params.parkRef : null;
+    const parkRef = matched?.route.id === "park" ? matched.params.parkRef : null;
     const dataPromise = parkRef ? loadPark(parkRef) : null;
 
     const sink = new PassThrough();
@@ -24,13 +31,13 @@ function render(url, signal) {
         <html lang="en">
             <head>
                 <meta charSet="utf-8" />
-                <title>{parkRef ? parkRef + ' — Sample' : 'Sample'}</title>
+                <title>{parkRef ? parkRef + " — Sample" : "Sample"}</title>
             </head>
             <body>
                 <div id="app">
                     <App path={path} dataPromise={dataPromise} />
                 </div>
-                <script src="/app.js" async />
+                <script type="module" src="/app.js" async />
             </body>
         </html>,
         {
@@ -38,15 +45,15 @@ function render(url, signal) {
             onError(e) { console.error(e); },
         });
 
-    signal.addEventListener('abort', () => abort(signal.reason));
+    signal.addEventListener("abort", () => abort(signal.reason));
 
     // The application's router decides what exists; a miss is a real 404 on the wire rather than a
     // soft 200 with not-found copy in it.
-    const found = matched !== null && parkRef !== 'missing';
+    const found = matched !== null && parkRef !== "missing";
 
-    return new Response(Readable.toWeb(sink), {
+    return new Response(Readable.toWeb(sink) as ReadableStream, {
         status: found ? 200 : 404,
-        headers: { 'content-type': 'text/html; charset=utf-8' },
+        headers: { "content-type": "text/html; charset=utf-8" },
     });
 }
 
@@ -63,7 +70,7 @@ export default {
     router: routes,
 
     /** The Web-standard handler: `fetch(request, env, ctx)`, as Workers, Deno and Bun define it. */
-    fetch(request, env, ctx) {
+    fetch(request: Request) {
         return render(new URL(request.url), request.signal);
     },
 

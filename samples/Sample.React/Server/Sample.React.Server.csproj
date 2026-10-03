@@ -17,4 +17,38 @@
         <ProjectReference Include="..\..\..\src\Alethic.Node.AspNetCore\Alethic.Node.AspNetCore.csproj" />
     </ItemGroup>
 
+    <!-- The shared client, Sample.Client: its aspnet and ssr bundles are this sample's. -->
+    <ItemGroup>
+        <ProjectReference Include="..\..\Sample.Client\Sample.Client.esproj">
+            <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+            <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
+        </ProjectReference>
+    </ItemGroup>
+
+    <!--
+        The server bundle goes beside the application rather than under wwwroot: it is the server's own module, and
+        everything under wwwroot is public.
+    -->
+    <Target Name="ResolveServerBundle" BeforeTargets="ResolveStaticWebAssetsConfiguration">
+        <ItemGroup>
+            <Content Include="..\..\Sample.Client\dist\ssr\app.cjs" CopyToOutputDirectory="PreserveNewest" Link="ssr\app.cjs" />
+        </ItemGroup>
+    </Target>
+
+    <!--
+        The client's browser bundle is this application's whole web root. Copied into wwwroot, not linked to where the
+        client built it: running from the project, static web assets serve a linked file from wwwroot, where it is not.
+        What is there now is the web root's content, which the item globs, evaluated before the copy, may not hold yet.
+    -->
+    <Target Name="ResolveClientAssets" BeforeTargets="ResolveStaticWebAssetsConfiguration">
+        <ItemGroup>
+            <_ClientAssets Include="..\..\Sample.Client\dist\aspnet\**\*" />
+        </ItemGroup>
+        <Copy SourceFiles="@(_ClientAssets)" DestinationFiles="@(_ClientAssets->'wwwroot\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+        <ItemGroup>
+            <Content Remove="wwwroot\**" />
+            <Content Include="wwwroot\**" CopyToPublishDirectory="PreserveNewest" />
+        </ItemGroup>
+    </Target>
+
 </Project>

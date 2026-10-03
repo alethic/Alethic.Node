@@ -48,32 +48,42 @@ public class NodeRequestTests
         };
         """);
 
+    static NodeEnginePool pool = null!;
+
     /// <summary>
     /// The application's pool, as a site would have it.
     /// </summary>
     static NodeEnginePool Pool => AspNetNode.Pool;
 
     /// <summary>
-    /// Configures the application's pool: one engine, so that requests share it.
+    /// Gives the application a pool through <see cref="HttpRuntime.WebObjectActivator"/>, as a site with a container
+    /// would: one engine, so that requests share it, and nothing done to prepare it, which requests do themselves.
     /// </summary>
     /// <param name="context">The test context.</param>
-    [AssemblyInitialize]
+    [ClassInitialize]
     public static void Initialize(TestContext context)
     {
-        AspNetNode.Configure(o =>
-        {
-            o.EngineCount = 1;
-            o.MaxConcurrencyPerEngine = 8;
-        });
+        pool = new NodeEnginePool(new NodeEnginePoolOptions() { EngineCount = 1, MaxConcurrencyPerEngine = 8 }, NullLoggerFactory.Instance, new NoServices());
+        HttpRuntime.WebObjectActivator = new Supplies(pool);
     }
 
     /// <summary>
-    /// Stops the application's pool.
+    /// Stops the pool, and takes the activator away.
     /// </summary>
-    [AssemblyCleanup]
+    [ClassCleanup]
     public static async Task Cleanup()
     {
-        await Pool.DisposeAsync();
+        HttpRuntime.WebObjectActivator = null;
+        await pool.DisposeAsync();
+    }
+
+    /// <summary>
+    /// The application's pool is the one its activator supplies.
+    /// </summary>
+    [TestMethod]
+    public void The_pool_is_the_one_the_activator_supplies()
+    {
+        Assert.AreSame(pool, AspNetNode.Pool);
     }
 
     /// <summary>
@@ -233,8 +243,8 @@ public class NodeRequestTests
     }
 
     /// <summary>
-    /// What the work hands back runs on the request's thread, which <see cref="NodeRequest.Run{T}(NodeEnginePool, NodeModuleSource, Func{JSValue, Task{T}}, CancellationToken)"/>
-    /// blocks to serve it.
+    /// What the work hands back runs on the request's thread, which <see cref="NodeRequest.Run{T}(NodeEnginePool,
+    /// NodeModuleSource, Func{JSValue, Task{T}}, CancellationToken)"/> blocks to serve it.
     /// </summary>
     [TestMethod]
     public void Run_serves_invocations_on_the_request_thread()
@@ -304,8 +314,8 @@ public class NodeRequestTests
     }
 
     /// <summary>
-    /// <see cref="NodeRequest.RunAsync{T}(NodeEnginePool, NodeModuleSource, Func{JSValue, Task{T}}, CancellationToken)"/>
-    /// serves an invocation that answers asynchronously.
+    /// <see cref="NodeRequest.RunAsync{T}(NodeEnginePool, NodeModuleSource, Func{JSValue, Task{T}},
+    /// CancellationToken)"/> serves an invocation that answers asynchronously.
     /// </summary>
     [TestMethod]
     public async Task RunAsync_serves_asynchronous_invocations()
@@ -370,6 +380,21 @@ public class NodeRequestTests
         {
             throw new InvalidOperationException("The context's thread is held.");
         }
+
+    }
+
+    /// <summary>
+    /// An activator that supplies one pool, and nothing else.
+    /// </summary>
+    /// <param name="supplied">The pool.</param>
+    sealed class Supplies(NodeEnginePool supplied) : IServiceProvider
+    {
+
+        /// <summary>
+        /// The pool, where it is asked for.
+        /// </summary>
+        /// <param name="serviceType">The service asked for.</param>
+        public object? GetService(Type serviceType) => serviceType == typeof(NodeEnginePool) ? supplied : null;
 
     }
 

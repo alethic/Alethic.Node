@@ -3,32 +3,33 @@
 Node embedded in an ASP.NET (System.Web) application on .NET Framework, over
 [Alethic.Node](https://www.nuget.org/packages/Alethic.Node)'s pooled engines. It covers the parts System.Web makes
 awkward:
-- the application has no container to keep a pool in;
+- the application may have no container to keep a pool in;
 - the request's `HttpContext` is not on the engine's thread;
 - a page's script fetches from the site it is running inside.
 
 ## The application's pool
 
-`AspNetNode.Pool` is made the first time it is used and disposed of when the application shuts down. It is
-configured from `appSettings`:
+`AspNetNode.Pool` is the application's pool. It works with no setup at all: one engine, made the first time it is
+used and disposed of when the application shuts down.
+
+A site with a container supplies its own instead. If `HttpRuntime.WebObjectActivator` supplies a `NodeEnginePool`,
+that is the pool, and it is the site's to dispose of.
+
+To change the default pool's settings, declare the `alethic.node` section in `web.config` and set what differs:
 
 ```xml
-<appSettings>
-  <add key="Alethic:Node:EngineCount" value="2" />
-  <add key="Alethic:Node:MaxConcurrencyPerEngine" value="4" />
-</appSettings>
+<configSections>
+  <section name="alethic.node" type="Alethic.Node.AspNet.NodeSection, Alethic.Node.AspNet" />
+</configSections>
+
+<alethic.node engineCount="2" />
 ```
 
-`Alethic:Node:AcquireTimeout`, `Alethic:Node:LibNodePath` and `Alethic:Node:BaseDirectory` are also read. In the two
-paths, `~/` means the application's root.
+The section also takes `maxConcurrencyPerEngine` (4), `acquireTimeout` (`00:00:10`), `libNodePath` and
+`baseDirectory`. In the two paths, `~/` means the application's root. One engine is a safe default; more engines need
+CPU the site is entitled to.
 
-You can also configure it in code, before its first use, for example in `Application_Start`:
-
-```csharp
-AspNetNode.Configure(o => o.EngineCount = 2);
-```
-
-Set the engine count yourself. As with any pool, it has to match the CPU the site is entitled to.
+Any pool works with `NodeRequest`: an engine is prepared for requests the first time one calls into it.
 
 Reference `Microsoft.JavaScript.LibNode.win-x64` from the web project. Its build puts `libnode.dll` under
 `bin\runtimes\win-x64\native`, which is where it is found.

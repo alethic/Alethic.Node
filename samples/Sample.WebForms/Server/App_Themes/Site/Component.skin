@@ -1,0 +1,7 @@
+<%@ Register Assembly="Alethic.Node.AspNet.Components" Namespace="Alethic.Node.AspNet.Components" TagPrefix="node" %>
+
+<%--
+    Where every Component on the site finds its modules: the shared client's two Web Forms bundles, which the build copies
+    here. A page that names other modules sets its own, which the style sheet theme lets win.
+--%>
+<node:Component runat="server" Module="~/components/client.js" ServerModule="~/App_Data/components/server.cjs" />

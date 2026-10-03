@@ -1,0 +1,33 @@
+<%@ Master Language="C#" AutoEventWireup="true" CodeBehind="Site.Master.cs" Inherits="Sample.WebForms.Site" %>
+<!DOCTYPE html>
+<html lang="en">
+<head runat="server">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Node components on Web Forms</title>
+    <link rel="stylesheet" href="/site.css" />
+</head>
+<body>
+    <form id="form" runat="server">
+        <header>
+            <strong>Node components</strong>
+            <nav>
+                <a href="/">Start</a>
+                <a href="/Props.aspx">Props</a>
+                <a href="/Partial.aspx">Partial postbacks</a>
+                <a href="/Async.aspx">Async page</a>
+                <a href="/Sync.aspx">Sync page</a>
+                <a href="/Errors.aspx">Errors</a>
+                <a href="/Globals.aspx">Global scope</a>
+                <a href="/Demo.aspx">Demo</a>
+            </nav>
+            <%-- On every page, outside any UpdatePanel: its count comes from code, and on the demo from the page's
+                 shared context as products are added. --%>
+            <node:Component ID="Badge" runat="server" Name="Catalog.CartBadge" />
+        </header>
+        <main>
+            <asp:ContentPlaceHolder ID="Main" runat="server" />
+        </main>
+    </form>
+</body>
+</html>

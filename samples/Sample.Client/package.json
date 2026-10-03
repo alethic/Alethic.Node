@@ -1,0 +1,33 @@
+{
+    "name": "sample.client",
+    "private": true,
+    "version": "0.0.0-dev",
+    "type": "module",
+    "scripts": {
+        "build": "yarn run build:aspnet && yarn run build:ssr && yarn run build:systemweb && yarn run build:systemweb-ssr",
+        "build:release": "yarn run build:aspnet:release && yarn run build:ssr:release && yarn run build:systemweb:release && yarn run build:systemweb-ssr:release",
+        "build:aspnet": "cross-env VITE_ENTRY=aspnet vite build --outDir dist/aspnet --mode development",
+        "build:aspnet:release": "cross-env VITE_ENTRY=aspnet vite build --outDir dist/aspnet --mode production",
+        "build:ssr": "cross-env VITE_ENTRY=ssr vite build --outDir dist/ssr --mode development",
+        "build:ssr:release": "cross-env VITE_ENTRY=ssr vite build --outDir dist/ssr --mode production",
+        "build:systemweb": "cross-env VITE_ENTRY=systemweb vite build --outDir dist/systemweb --mode development",
+        "build:systemweb:release": "cross-env VITE_ENTRY=systemweb vite build --outDir dist/systemweb --mode production",
+        "build:systemweb-ssr": "cross-env VITE_ENTRY=systemweb-ssr vite build --outDir dist/systemweb-ssr --mode development",
+        "build:systemweb-ssr:release": "cross-env VITE_ENTRY=systemweb-ssr vite build --outDir dist/systemweb-ssr --mode production",
+        "typecheck": "tsc --noEmit -p ."
+    },
+    "dependencies": {
+        "react": "^19.2.7",
+        "react-dom": "^19.2.7"
+    },
+    "devDependencies": {
+        "@types/node": "^26.1.0",
+        "@types/react": "^19.2.17",
+        "@types/react-dom": "^19.2.3",
+        "@vitejs/plugin-react": "^6.0.3",
+        "cross-env": "^10.1.0",
+        "typescript": "^6.0.3",
+        "vite": "^8.1.3"
+    },
+    "packageManager": "yarn@4.9.4"
+}

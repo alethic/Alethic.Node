@@ -12,7 +12,8 @@ namespace Alethic.Node;
 /// <c>runtimes/&lt;rid&gt;/native</c>, where the Microsoft.JavaScript.LibNode packages put the library, and then
 /// loads it by name, which finds it beside a published application. The one host that leaves it elsewhere is
 /// ASP.NET on .NET Framework, whose base directory is the site while its binaries are in the AppDomain's private
-/// <c>bin</c>: there the library is looked for under that.
+/// <c>bin</c>: there the library is looked for under that, at <c>runtimes/&lt;rid&gt;/native</c> or, where the build put
+/// it beside the site's assemblies, in <c>bin</c> itself.
 /// </remarks>
 static class LibNodeLocator
 {
@@ -34,9 +35,10 @@ static class LibNodeLocator
         var bin = AppDomain.CurrentDomain.RelativeSearchPath;
         if (string.IsNullOrEmpty(bin) == false)
         {
-            var file = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, bin, "runtimes", "win-" + Architecture, "native", FileName);
-            if (File.Exists(file))
-                return file;
+            var root = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, bin);
+            foreach (var file in new[] { Path.Combine(root, "runtimes", "win-" + Architecture, "native", FileName), Path.Combine(root, FileName) })
+                if (File.Exists(file))
+                    return file;
         }
 #endif
 

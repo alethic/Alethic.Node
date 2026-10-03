@@ -103,12 +103,15 @@ jobs:
         tfm:
         - net8.0
         - net9.0
-        # .NET Framework runs on Windows alone, and only the engines and System.Web target it.
+        # .NET Framework runs on Windows alone, and only the engines and System.Web's packages target it.
         include:
         - run: Alethic.Node.Tests
           sys: win-x64
           tfm: net472
         - run: Alethic.Node.AspNet.Tests
+          sys: win-x64
+          tfm: net472
+        - run: Alethic.Node.AspNet.Components.Tests
           sys: win-x64
           tfm: net472
     name: Test (${{ matrix.run }}:${{ matrix.tfm }}:${{ matrix.sys }})

@@ -15,14 +15,14 @@ namespace Alethic.Node.AspNet;
 /// the site.
 /// </summary>
 /// <remarks>
-/// The work runs on an engine's thread, which is not the request's: it has no <see cref="HttpContext"/>, and code
-/// that reads <see cref="HttpContext.Current"/>, as a page's and a handler's does, fails there. So what the work needs
-/// done as the request — a handler run for a <c>fetch</c> of the site, an event raised on a page —
-/// it hands back with <see cref="InvokeAsync{T}(Func{Task{T}})"/>, and the request's thread, which waits for the work by
-/// serving what it hands back, does it. <see cref="RunAsync{T}(NodeEnginePool, NodeModuleSource, Func{JSValue, Task{T}}, CancellationToken)"/>
-/// serves while it awaits, on the request's synchronization context, so each invocation may itself await;
-/// <see cref="Run{T}(NodeEnginePool, NodeModuleSource, Func{JSValue, Task{T}}, CancellationToken)"/> blocks the
-/// request's thread and serves each to its end, for a page that is not asynchronous.
+/// The work runs on an engine's thread, which is not the request's: it has no <see cref="HttpContext"/>, and code that
+/// reads <see cref="HttpContext.Current"/>, as a page's and a handler's does, fails there. So what the work needs done
+/// as the request — a handler run for a <c>fetch</c> of the site, an event raised on a page — it hands back with <see
+/// cref="InvokeAsync{T}(Func{Task{T}})"/>, and the request's thread, which waits for the work by serving what it hands
+/// back, does it. <see cref="RunAsync{T}(NodeEnginePool, NodeModuleSource, Func{JSValue, Task{T}},
+/// CancellationToken)"/> serves while it awaits, on the request's synchronization context, so each invocation may
+/// itself await; <see cref="Run{T}(NodeEnginePool, NodeModuleSource, Func{JSValue, Task{T}}, CancellationToken)"/>
+/// blocks the request's thread and serves each to its end, for a page that is not asynchronous.
 ///
 /// A <c>fetch</c> of the site, made by JavaScript the work called through <see cref="Call"/>, is answered in process by
 /// the handler the site maps the path to, through <see cref="InProcessRequest"/>, as the visitor this request is for:
@@ -30,8 +30,8 @@ namespace Alethic.Node.AspNet;
 /// a <c>fetch</c> belongs to is kept in an <c>AsyncLocalStorage</c>, so requests sharing an engine do not see each
 /// other's: module scope is shared by everything an engine runs.
 ///
-/// The engine has to have been prepared for this, by <see cref="InstallAsync"/> as its pool's
-/// <see cref="NodeEnginePoolOptions.ConfigureEngine"/>; <see cref="AspNetNode.Pool"/> is.
+/// Any pool will do: an engine is prepared for requests the first time one calls into it, or ahead of that by
+/// <see cref="InstallAsync"/>.
 /// </remarks>
 public sealed class NodeRequest
 {
@@ -137,8 +137,9 @@ public sealed class NodeRequest
     /// answers a request for the site in process.
     /// </summary>
     /// <remarks>
-    /// For a pool's <see cref="NodeEnginePoolOptions.ConfigureEngine"/>. It replaces the engine's global <c>fetch</c>
-    /// with one that hands any request made outside <see cref="Call"/> to the original.
+    /// Done the first time a request calls into the engine, so this is only for preparing it ahead of that, such as in
+    /// a pool's <see cref="NodeEnginePoolOptions.ConfigureEngine"/>. It replaces the engine's global <c>fetch</c> with
+    /// one that hands any request made outside <see cref="Call"/> to the original.
     /// </remarks>
     /// <param name="lease">A lease on the engine.</param>
     public static Task InstallAsync(NodeEngineLease lease)
@@ -146,14 +147,23 @@ public sealed class NodeRequest
         if (lease is null)
             throw new ArgumentNullException(nameof(lease));
 
-        return lease.RunAsync(() =>
-        {
-            var bridge = JSValue.RunScript(InstallScript);
-            bridge["dispatch"] = JSValue.CreateFunction("dispatch", Dispatch);
-            var global = JSValue.Global;
-            global[BridgeName] = bridge;
-            return Task.FromResult(true);
-        });
+        return lease.RunAsync(() => Task.FromResult(Bridge()));
+    }
+
+    /// <summary>
+    /// The engine's half of this, installed where it is not yet. On the engine's thread.
+    /// </summary>
+    static JSValue Bridge()
+    {
+        var global = JSValue.Global;
+        var bridge = global[BridgeName];
+        if (bridge.IsObject())
+            return bridge;
+
+        bridge = JSValue.RunScript(InstallScript);
+        bridge["dispatch"] = JSValue.CreateFunction("dispatch", Dispatch);
+        global[BridgeName] = bridge;
+        return bridge;
     }
 
     /// <summary>
@@ -177,7 +187,7 @@ public sealed class NodeRequest
     /// alongside one another. One the work did not wait for is finished before this is.
     /// </remarks>
     /// <typeparam name="T">What the work produces.</typeparam>
-    /// <param name="pool">The pool, whose engines <see cref="InstallAsync"/> prepared.</param>
+    /// <param name="pool">The pool.</param>
     /// <param name="module">The module.</param>
     /// <param name="work">The work, on the engine's thread, given the module's exports.</param>
     /// <param name="cancellationToken">Stops waiting for the work; it goes on, but nothing serves it.</param>
@@ -228,13 +238,13 @@ public sealed class NodeRequest
     /// </summary>
     /// <remarks>
     /// For a request that is not asynchronous, such as a page without <c>Async="true"</c>, whose thread holds its
-    /// synchronization context until it is done: nothing here waits on that context. Each invocation the work hands back
-    /// is done to its end, one at a time, and must finish before it returns; one that answers asynchronously throws,
-    /// since waiting for it could wait on the context this thread holds, and belongs to
-    /// <see cref="RunAsync{T}(NodeEnginePool, NodeModuleSource, Func{JSValue, Task{T}}, CancellationToken)"/>.
+    /// synchronization context until it is done: nothing here waits on that context. Each invocation the work hands
+    /// back is done to its end, one at a time, and must finish before it returns; one that answers asynchronously
+    /// throws, since waiting for it could wait on the context this thread holds, and belongs to <see
+    /// cref="RunAsync{T}(NodeEnginePool, NodeModuleSource, Func{JSValue, Task{T}}, CancellationToken)"/>.
     /// </remarks>
     /// <typeparam name="T">What the work produces.</typeparam>
-    /// <param name="pool">The pool, whose engines <see cref="InstallAsync"/> prepared.</param>
+    /// <param name="pool">The pool.</param>
     /// <param name="module">The module.</param>
     /// <param name="work">The work, on the engine's thread, given the module's exports.</param>
     /// <param name="cancellationToken">Stops waiting for the work; it goes on, but nothing serves it.</param>
@@ -283,8 +293,8 @@ public sealed class NodeRequest
     }
 
     /// <summary>
-    /// Calls a JavaScript function as this request: what it starts — a <c>fetch</c> above all, however much later — knows
-    /// the request it belongs to.
+    /// Calls a JavaScript function as this request: what it starts — a <c>fetch</c> above all, however much later —
+    /// knows the request it belongs to.
     /// </summary>
     /// <remarks>
     /// On the engine's thread, inside the work.
@@ -299,9 +309,7 @@ public sealed class NodeRequest
             throw new ArgumentNullException(nameof(args));
 
         var current = id ?? throw new InvalidOperationException("No Node work is under way for this request: call within the work.");
-        var bridge = JSValue.Global[BridgeName];
-        if (bridge.IsObject() == false)
-            throw new InvalidOperationException($"The engine was not prepared for requests: give its pool {nameof(NodeRequest)}.{nameof(InstallAsync)} as its {nameof(NodeEnginePoolOptions.ConfigureEngine)}, as {nameof(AspNetNode)}'s pool does.");
+        var bridge = Bridge();
 
         var request = JSValue.CreateObject();
         request["id"] = current;
@@ -335,7 +343,8 @@ public sealed class NodeRequest
     /// </summary>
     /// <remarks>
     /// Awaited on the engine's thread, it resumes there, where JavaScript values are legal. Work that answers
-    /// asynchronously can be served only by <see cref="RunAsync{T}(NodeEnginePool, NodeModuleSource, Func{JSValue, Task{T}}, CancellationToken)"/>.
+    /// asynchronously can be served only by <see cref="RunAsync{T}(NodeEnginePool, NodeModuleSource, Func{JSValue,
+    /// Task{T}}, CancellationToken)"/>.
     /// </remarks>
     /// <typeparam name="T">What the work produces.</typeparam>
     /// <param name="work">The work, done as the request.</param>

@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFrameworks>net472</TargetFrameworks>
+        <Description>JavaScript components hosted on ASP.NET Web Forms pages: a Component control whose props are set in markup and code and kept in view state, whose callbacks raise server commands, and which renders on the server on Node embedded in the worker process, through two functions the site's own client provides.</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>icon.png</PackageIcon>
+        <PackageTags>aspnet;webforms;system.web;components;react;ssr;node;libnode</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="\" />
+        <None Include="..\..\icon.png" Pack="true" PackagePath="\" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="Components.js" LogicalName="Alethic.Node.AspNet.Components.Components.js" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Alethic.Node.AspNet.Components.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Reference Include="System.Configuration" />
+        <Reference Include="System.Web" />
+        <Reference Include="System.Web.Extensions" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="System.Text.Json" Version="9.0.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Alethic.Node.AspNet\Alethic.Node.AspNet.csproj" />
+    </ItemGroup>
+
+</Project>
