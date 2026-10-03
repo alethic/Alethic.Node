@@ -11,20 +11,20 @@ export * from "../components";
 
 /**
  * Renders one component to HTML, or throws. The library calls it for each component on a page, one
- * after another, with the same `page` object, and does the rest: the callbacks, waiting for their
+ * after another, with the same `state` object, and does the rest: the callbacks, waiting for their
  * answers, and reporting what failed.
  * @param Component the component
  * @param props its props
- * @param page the page's own object, shared by its components
+ * @param state the page render's own object, shared by its components
  */
-export async function render(Component: ComponentType<object>, props: object, page: { cache?: Map<string, Promise<unknown>> }) {
+export async function render(Component: ComponentType<object>, props: object, state: { cache?: Map<string, Promise<unknown>> }) {
     // One cache for the page, as in the browser's one tree, so its components ask once.
-    page.cache ??= new Map();
+    state.cache ??= new Map();
 
     // What React recovers from by leaving the component to the browser, it tells only onError: that is still a failure.
     let failure: unknown;
     const { prelude } = await prerender(
-        <Providers cache={page.cache}>
+        <Providers cache={state.cache}>
             <Component {...props} />
         </Providers>,
         {

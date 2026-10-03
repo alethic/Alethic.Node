@@ -15,7 +15,7 @@ namespace Alethic.Node.AspNet.Components;
 /// </summary>
 /// <remarks>
 /// Each component is found in the module by its name, an export or a dotted path through one; a name the module has
-/// nothing at fails that component. The module's <c>render(component, props, page)</c> renders one component to HTML,
+/// nothing at fails that component. The module's <c>render(component, props, state)</c> renders one component to HTML,
 /// or throws: it is all a module provides. The rest is the library's, in <see cref="PageScript"/>, which the engine is
 /// given once: it renders a page's components one after another, all with the same <c>page</c> object, which they
 /// share; it makes every callback in the props a function that raises its command on the request, counts the commands
@@ -106,7 +106,7 @@ internal static class ComponentServerRender
             }
 
             async function renderPage(render, requests) {
-                const shared = {};
+                const state = {};
                 const page = { pending: 0, unhandled: new Map() };
                 const rendered = {};
 
@@ -114,7 +114,7 @@ internal static class ComponentServerRender
                     let html;
                     let failure;
                     try {
-                        html = await render(component, track(props, page, id), shared);
+                        html = await render(component, track(props, page, id), state);
                         if (typeof html !== 'string') {
                             throw new TypeError(`The server module's render resolved to ${typeof html}, not a string of HTML.`);
                         }

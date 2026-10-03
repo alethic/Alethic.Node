@@ -44,9 +44,9 @@ public class ComponentServerRenderTests
         }
 
         // Counts the components of the page it rendered in.
-        function Counts(props, page) {
-            page.count = (page.count ?? 0) + 1;
-            return String(page.count);
+        function Counts(props, state) {
+            state.count = (state.count ?? 0) + 1;
+            return String(state.count);
         }
 
         const NotHtml = () => 42;
@@ -59,8 +59,8 @@ public class ComponentServerRenderTests
             Counts,
             NotHtml,
             Nested: { Deeper: { Echo } },
-            async render(component, props, page) {
-                return await component(props, page);
+            async render(component, props, state) {
+                return await component(props, state);
             },
         };
         """);
@@ -235,10 +235,10 @@ public class ComponentServerRenderTests
     }
 
     /// <summary>
-    /// The components of one page share one page object; another page has its own.
+    /// The components of one page share one state object; another page has its own.
     /// </summary>
     [TestMethod]
-    public async Task A_page_shares_one_page_object()
+    public async Task A_page_shares_one_state_object()
     {
         var first = await ComponentServerRender.RenderAsync(Request(), pool, Bundle, [Outlet("a", "Counts", []), Outlet("b", "Counts", [])], TimeSpan.FromSeconds(30));
         var second = await ComponentServerRender.RenderAsync(Request(), pool, Bundle, [Outlet("a", "Counts", [])], TimeSpan.FromSeconds(30));

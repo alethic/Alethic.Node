@@ -178,7 +178,7 @@ export function outlet(Component, element, props) {
 }
 ```
 
-### `render(component, props, page)`
+### `render(component, props, state)`
 
 Exported by the server's module, which runs on Node embedded in the worker process. That runtime cannot `import()`, so
 the module is CommonJS. Node's `require` resolves what it requires as it would for any program, so a module that
@@ -187,7 +187,7 @@ bundles its dependencies needs nothing beside it. A bundled module also needs `p
 - **`component`** is what `Name` found in the module.
 - **`props`** are the component's props. Each callback is a function returning a promise, which raises the command on
   the page there and then.
-- **`page`** is one plain object for the whole page render, the same for each of its components and new for every
+- **`state`** is one plain object for the whole page render, the same for each of its components and new for every
   page: whatever the page's components share, such as a cache, goes on it.
 - **It resolves to** the component's HTML, or throws why there is none.
 
@@ -205,11 +205,11 @@ import { prerender } from "react-dom/static";
 
 export * from "./components";
 
-export async function render(Component, props, page) {
-    page.cache ??= new Map();
+export async function render(Component, props, state) {
+    state.cache ??= new Map();
 
     let failure;
-    const { prelude } = await prerender(<Providers cache={page.cache}><Component {...props} /></Providers>, {
+    const { prelude } = await prerender(<Providers cache={state.cache}><Component {...props} /></Providers>, {
         onError: (e, info) => { failure ??= Object.assign(e, { componentStack: info?.componentStack }); },
     });
 
