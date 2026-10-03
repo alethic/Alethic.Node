@@ -2,6 +2,11 @@ name: Alethic.Node
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish this build to nuget.org, creating the GitHub release if one does not exist.
+        type: boolean
+        default: false
   push:
     branches:
     - main
@@ -203,6 +208,10 @@ jobs:
     needs:
     - test
     runs-on: ubuntu-latest
+    env:
+      # Gates both the GitHub release and the nuget.org push: true for a tag build or a manual run that
+      # asks to publish. The GitHub Packages push is not gated and runs on every non-PR build.
+      PUBLISH: ${{ github.ref_type == 'tag' || inputs.publish == true }}
     steps:
     - name: Checkout Source
       uses: actions/checkout@v7
@@ -224,15 +233,21 @@ jobs:
       with:
         name: nuget
         path: dist/nuget
+    # `commit` lets the action create the tag when it does not exist. When the release already exists
+    # (a tag build or a re-run) it is updated in place, keeping hand-written notes and replacing the
+    # packages.
     - name: Create Release
-      if: github.ref_type == 'tag'
+      if: env.PUBLISH == 'true'
       uses: ncipollo/release-action@v1
       with:
         tag: ${{ steps.GitVersion.outputs.semVer }}
+        commit: ${{ github.sha }}
         allowUpdates: true
         omitBodyDuringUpdate: true
+        replacesArtifacts: true
         artifacts: dist/nuget/*.nupkg,dist/nuget/*.snupkg
-        makeLatest: true
+        prerelease: ${{ contains(steps.GitVersion.outputs.semVer, '-') }}
+        makeLatest: ${{ !contains(steps.GitVersion.outputs.semVer, '-') }}
         token: ${{ secrets.GITHUB_TOKEN }}
     - name: Push NuGet (GitHub)
       if: github.event_name != 'pull_request'
@@ -241,8 +256,9 @@ jobs:
       env:
         GITHUB_REPOS: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    # --skip-duplicate makes pushing a version nuget.org already has a no-op.
     - name: Push NuGet
-      if: github.ref_type == 'tag'
+      if: env.PUBLISH == 'true'
       shell: pwsh
       run: dotnet nuget push dist/nuget/*.nupkg --source $env:NUGET_REPOS --api-key $env:NUGET_TOKEN --skip-duplicate
       env:
