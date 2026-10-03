@@ -3,46 +3,12 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.JavaScript.NodeApi;
 
 namespace Alethic.Node.AspNet.Components;
-
-/// <summary>
-/// One component a page renders on the server: where it goes, what it is, its props, and how its commands are raised.
-/// </summary>
-/// <param name="id">The id of the element it renders into.</param>
-/// <param name="component">The name the server bundle knows it by.</param>
-/// <param name="props">Its props.</param>
-/// <param name="raise">Raises one of its commands, on the request: the command's name and what the component called the
-/// callback with. Completes with the command's result as JSON, or <see langword="null"/> for none.</param>
-internal sealed class ComponentOutlet(string id, string component, ComponentObject props, Func<string, IReadOnlyList<JsonElement>, Task<string?>> raise)
-{
-
-    /// <summary>
-    /// The id of the element it renders into.
-    /// </summary>
-    public string Id { get; } = id;
-
-    /// <summary>
-    /// The name the server bundle knows it by.
-    /// </summary>
-    public string Component { get; } = component;
-
-    /// <summary>
-    /// Its props.
-    /// </summary>
-    public ComponentObject Props { get; } = props;
-
-    /// <summary>
-    /// Raises one of its commands, on the request.
-    /// </summary>
-    public Func<string, IReadOnlyList<JsonElement>, Task<string?>> Raise { get; } = raise;
-
-}
 
 /// <summary>
 /// Renders a page's components to HTML in one call to the server bundle's <c>renderOutlets</c>, on a Node engine, as
@@ -262,57 +228,5 @@ internal static class ComponentServerRender
 
         return read;
     }
-
-}
-
-/// <summary>
-/// What became of one component in a server render: its HTML, or why there is none.
-/// </summary>
-internal sealed class ComponentRendered
-{
-
-    /// <summary>
-    /// The component's HTML, where it rendered.
-    /// </summary>
-    public string? Html { get; set; }
-
-    /// <summary>
-    /// Why it did not, where it did not.
-    /// </summary>
-    public ComponentRenderError? Error { get; set; }
-
-}
-
-/// <summary>
-/// What a component threw while it rendered on the server, and where.
-/// </summary>
-internal sealed class ComponentRenderError
-{
-
-    /// <summary>
-    /// The message.
-    /// </summary>
-    public string Message { get; set; } = "";
-
-    /// <summary>
-    /// The JavaScript stack, where there is one.
-    /// </summary>
-    public string? Stack { get; set; }
-
-    /// <summary>
-    /// Where in the component tree, where the client reports it.
-    /// </summary>
-    public string? ComponentStack { get; set; }
-
-    /// <summary>
-    /// The id a failed command's rejection carried, where that is what failed the component.
-    /// </summary>
-    public string? DotnetErrorId { get; set; }
-
-    /// <summary>
-    /// What the failed command's handler threw, where that is what failed the component.
-    /// </summary>
-    [JsonIgnore]
-    public Exception? Exception { get; set; }
 
 }

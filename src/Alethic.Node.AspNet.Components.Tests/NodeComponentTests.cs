@@ -46,13 +46,13 @@ public class NodeComponentTests
     {
         var control = new Exposed() { ID = "rc", Component = "Panel" };
         control.Controls.Add(new ComponentProp() { Name = "title", Value = "Pipettes" });
-        control.Controls.Add(new ComponentProp() { Name = "count", Json = "3" });
+        control.Controls.Add(new ComponentProp() { Name = "count", Value = "3", Type = ComponentPropType.Number });
 
         var filter = new ComponentProp() { Name = "filter" };
         filter.Controls.Add(new ComponentProp() { Name = "brand", Value = "Eppendorf" });
         control.Controls.Add(filter);
 
-        var columns = new ComponentProp() { Name = "columns", Array = true };
+        var columns = new ComponentProp() { Name = "columns" };
         columns.Controls.Add(new ComponentProp() { Value = "sku" });
         columns.Controls.Add(new ComponentProp() { Value = "name" });
         control.Controls.Add(columns);

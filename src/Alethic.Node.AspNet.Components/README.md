@@ -19,11 +19,11 @@ The JavaScript half is your own client, which builds two bundles to the contract
 
 <node:NodeComponent ID="rcPanel" runat="server" Component="GreetingPanel" OnCommand="rcPanel_Command">
     <node:ComponentProp Name="title" Value="Hello" />
-    <node:ComponentProp Name="limit" Json="5" />
+    <node:ComponentProp Name="limit" Value="5" Type="Number" />
     <node:ComponentProp Name="filter">
         <node:ComponentProp Name="brand" Value="Eppendorf" />
     </node:ComponentProp>
-    <node:ComponentProp Name="columns" Array="true">
+    <node:ComponentProp Name="columns">
         <node:ComponentProp Value="sku" />
         <node:ComponentProp Value="name" />
     </node:ComponentProp>
