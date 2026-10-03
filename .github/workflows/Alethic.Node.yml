@@ -45,7 +45,7 @@ jobs:
         GITHUB_REPOS: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - name: NuGet Restore
-      run: dotnet restore Alethic.Node.AspNetCore.slnx
+      run: dotnet restore Alethic.Node.slnx
     - name: Build
       run: |
         dotnet msbuild /m /bl \
@@ -62,7 +62,7 @@ jobs:
           /p:PackageProjectUrl="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
           /p:BuildInParallel=true \
           /p:ContinuousIntegrationBuild=true \
-          Alethic.Node.AspNetCore.dist.msbuildproj
+          Alethic.Node.dist.msbuildproj
     - name: Upload MSBuild Log
       if: ${{ always() }}
       uses: actions/upload-artifact@v7
