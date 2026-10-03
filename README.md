@@ -7,7 +7,7 @@ No sidecar process, no HTTP hop.
 included — a console, a service, an ASP.NET Web Forms site. The hosts build on it:
 
 - **Alethic.Node.AspNetCore** — server-side rendering for ASP.NET Core: the request handler and the endpoint mapping.
-  It was published as Alethic.AspNetCore.Node until 2.0; its types moved from that namespace to
+  It was published as Alethic.AspNetCore.Node through 0.3; its types moved from that namespace to
   `Alethic.Node.AspNetCore`, and the engines' to `Alethic.Node`.
 
 The repository previously carried a fork of MintPlayer.AspNetCore.SpaServices, the community
