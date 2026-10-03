@@ -42,6 +42,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
     public NodeEnginePool(IOptions<NodeEnginePoolOptions> options, ILoggerFactory loggerFactory, IServiceProvider services)
         : this(options?.Value!, loggerFactory, services)
     {
+
     }
 
     /// <summary>
