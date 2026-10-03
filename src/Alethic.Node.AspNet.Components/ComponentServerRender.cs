@@ -11,16 +11,17 @@ using Microsoft.JavaScript.NodeApi;
 namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
-/// Renders a page's components to HTML in one call to the server bundle's <c>renderOutlets</c>, on a Node engine, as
+/// Renders a page's components to HTML in one call to a server module's <c>renderOutlets</c>, on a Node engine, as
 /// the page's request.
 /// </summary>
 /// <remarks>
-/// The bundle is given each component's props as JavaScript values, every callback a function that raises its command
-/// on the request and answers with a promise of the result. What the components fetch of the site is answered in
-/// process, by <see cref="NodeRequest"/>.
+/// Each component is found in the module by its name, an export or a dotted path through one; a name the module has
+/// nothing at fails that component. The module is given each component with its props as JavaScript values, every
+/// callback a function that raises its command on the request and answers with a promise of the result. What the
+/// components fetch of the site is answered in process, by <see cref="NodeRequest"/>.
 ///
-/// <c>renderOutlets(requests)</c> takes <c>{ id, component, props }</c> for each component and resolves to JSON naming
-/// what became of each, by id: <c>{ html }</c>, or <c>{ error: { message, stack, componentStack, dotnetErrorId } }</c>.
+/// <c>renderOutlets(requests)</c> takes <c>{ id, component, props }</c> for each component, <c>component</c> the one the
+/// name found, and resolves to JSON naming what became of each, by id: <c>{ html }</c>, or <c>{ error: { message, stack, componentStack, dotnetErrorId } }</c>.
 /// A command whose handler threw rejects with an <c>Error</c> carrying a <c>dotnetErrorId</c>, by which the exception
 /// is found again to be the inner exception of the component's error.
 /// </remarks>
@@ -38,19 +39,20 @@ internal static class ComponentServerRender
     /// </summary>
     /// <param name="request">The request.</param>
     /// <param name="pool">The pool to render on.</param>
-    /// <param name="bundle">The server bundle.</param>
+    /// <param name="module">The server module.</param>
     /// <param name="outlets">The components.</param>
     /// <param name="timeout">How long to wait.</param>
     /// <returns>What became of each component, by its element's id.</returns>
     /// <exception cref="TimeoutException">The render took longer than <paramref name="timeout"/>.</exception>
-    public static async Task<IReadOnlyDictionary<string, ComponentRendered>> RenderAsync(NodeRequest request, NodeEnginePool pool, NodeModuleSource bundle, IReadOnlyList<ComponentOutlet> outlets, TimeSpan timeout)
+    public static async Task<IReadOnlyDictionary<string, ComponentRendered>> RenderAsync(NodeRequest request, NodeEnginePool pool, NodeModuleSource module, IReadOnlyList<ComponentOutlet> outlets, TimeSpan timeout)
     {
         var failures = new ConcurrentDictionary<string, Exception>();
+        var missing = new ConcurrentDictionary<string, string>();
         using var cancel = new CancellationTokenSource(timeout);
 
         try
         {
-            return Read(await request.RunAsync(pool, bundle, Work(request, outlets, failures), cancel.Token), outlets, failures);
+            return Read(await request.RunAsync(pool, module, Work(request, outlets, failures, missing), cancel.Token), outlets, failures, missing);
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
@@ -64,19 +66,20 @@ internal static class ComponentServerRender
     /// </summary>
     /// <param name="request">The request.</param>
     /// <param name="pool">The pool to render on.</param>
-    /// <param name="bundle">The server bundle.</param>
+    /// <param name="module">The server module.</param>
     /// <param name="outlets">The components.</param>
     /// <param name="timeout">How long to wait.</param>
     /// <returns>What became of each component, by its element's id.</returns>
     /// <exception cref="TimeoutException">The render took longer than <paramref name="timeout"/>.</exception>
-    public static IReadOnlyDictionary<string, ComponentRendered> Render(NodeRequest request, NodeEnginePool pool, NodeModuleSource bundle, IReadOnlyList<ComponentOutlet> outlets, TimeSpan timeout)
+    public static IReadOnlyDictionary<string, ComponentRendered> Render(NodeRequest request, NodeEnginePool pool, NodeModuleSource module, IReadOnlyList<ComponentOutlet> outlets, TimeSpan timeout)
     {
         var failures = new ConcurrentDictionary<string, Exception>();
+        var missing = new ConcurrentDictionary<string, string>();
         using var cancel = new CancellationTokenSource(timeout);
 
         try
         {
-            return Read(request.Run(pool, bundle, Work(request, outlets, failures), cancel.Token), outlets, failures);
+            return Read(request.Run(pool, module, Work(request, outlets, failures, missing), cancel.Token), outlets, failures, missing);
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
@@ -85,33 +88,61 @@ internal static class ComponentServerRender
     }
 
     /// <summary>
-    /// The render, on the engine's thread: the components' requests built and handed to <c>renderOutlets</c>.
+    /// The render, on the engine's thread: each component found in the module, and their requests handed to
+    /// <c>renderOutlets</c>.
     /// </summary>
     /// <param name="request">The request.</param>
     /// <param name="outlets">The components.</param>
     /// <param name="failures">What failed commands threw, by the id their rejections carry.</param>
-    static Func<JSValue, Task<string>> Work(NodeRequest request, IReadOnlyList<ComponentOutlet> outlets, ConcurrentDictionary<string, Exception> failures)
+    /// <param name="missing">Why components were not found, by their element's id.</param>
+    static Func<JSValue, Task<string>> Work(NodeRequest request, IReadOnlyList<ComponentOutlet> outlets, ConcurrentDictionary<string, Exception> failures, ConcurrentDictionary<string, string> missing)
     {
         return async exports =>
         {
             var renderOutlets = exports["renderOutlets"];
             if (renderOutlets.IsFunction() == false)
-                throw new InvalidOperationException("The server bundle exports no renderOutlets function.");
+                throw new InvalidOperationException("The server module exports no renderOutlets function.");
 
-            var requests = JSValue.CreateArray(outlets.Count);
-            for (var i = 0; i < outlets.Count; i++)
+            var requests = JSValue.CreateArray(0);
+            var count = 0;
+            foreach (var outlet in outlets)
             {
-                var outlet = outlets[i];
+                if (Find(exports, outlet.Component) is not JSValue component)
+                {
+                    missing[outlet.Id] = $"The server module has no {outlet.Component}.";
+                    continue;
+                }
+
                 var item = JSValue.CreateObject();
                 item["id"] = outlet.Id;
-                item["component"] = outlet.Component;
+                item["component"] = component;
                 item["props"] = ToJS(outlet.Props, name => Callback(request, outlet, name, failures));
-                requests[i] = item;
+                requests[count++] = item;
             }
 
             var rendered = await ((JSPromise)request.Call(renderOutlets, exports, requests)).AsTask();
             return (string)rendered;
         };
+    }
+
+    /// <summary>
+    /// What a name is in a module's exports: an export, or a dotted path through one; <see langword="null"/> where it is
+    /// nothing. On the engine's thread.
+    /// </summary>
+    /// <param name="exports">The module's exports.</param>
+    /// <param name="name">The name.</param>
+    static JSValue? Find(JSValue exports, string name)
+    {
+        var at = exports;
+        foreach (var key in name.Split('.'))
+        {
+            if (at.IsObject() == false && at.IsFunction() == false)
+                return null;
+
+            at = at[key];
+        }
+
+        return at.IsNullOrUndefined() ? null : (JSValue?)at;
     }
 
     /// <summary>
@@ -214,13 +245,17 @@ internal static class ComponentServerRender
     /// <param name="json">What it answered.</param>
     /// <param name="outlets">The components it was asked to render.</param>
     /// <param name="failures">What failed commands threw, by the id their rejections carry.</param>
+    /// <param name="missing">Why components were not found, by their element's id.</param>
     /// <exception cref="InvalidOperationException">It said nothing of a component it was asked to render.</exception>
-    static IReadOnlyDictionary<string, ComponentRendered> Read(string json, IReadOnlyList<ComponentOutlet> outlets, ConcurrentDictionary<string, Exception> failures)
+    static IReadOnlyDictionary<string, ComponentRendered> Read(string json, IReadOnlyList<ComponentOutlet> outlets, ConcurrentDictionary<string, Exception> failures, ConcurrentDictionary<string, string> missing)
     {
         var read = JsonSerializer.Deserialize<Dictionary<string, ComponentRendered>>(json, ReadOptions) ?? [];
+        foreach (var pair in missing)
+            read[pair.Key] = new ComponentRendered() { Error = new ComponentRenderError() { Message = pair.Value } };
+
         foreach (var outlet in outlets)
             if (read.ContainsKey(outlet.Id) == false)
-                throw new InvalidOperationException($"The server bundle's renderOutlets said nothing of {outlet.Component} in '{outlet.Id}'.");
+                throw new InvalidOperationException($"The server module's renderOutlets said nothing of {outlet.Component} in '{outlet.Id}'.");
 
         foreach (var result in read.Values)
             if (result.Error?.DotnetErrorId is string id && failures.TryGetValue(id, out var exception))

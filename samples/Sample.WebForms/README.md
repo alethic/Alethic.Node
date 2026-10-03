@@ -16,10 +16,10 @@ Alethic.Node.AspNet.Components. Each page shows one of the ways Web Forms can dr
 ## Layout
 
 - **`Server`** is the site. It is an SDK-style project whose code-behind compiles to `bin\`, beside the pages.
-  Cogito.AspNet.MSBuild writes the binding redirects into `Web.config`. Nothing is configured for the components: every
-  default fits.
+  Cogito.AspNet.MSBuild writes the binding redirects into `Web.config`. The site's theme has a skin,
+  `App_Themes/Site/Component.skin`, giving every `Component` its `Module` and `ServerModule`.
 - **The client** is `samples/Sample.Client`, which the ASP.NET Core sample shares. The site references its project, and
-  building the site builds it and copies its two Web Forms bundles where `Component` looks by default:
+  building the site builds it and copies its two Web Forms bundles where the skin says they are:
   - `Server/components/client.js`, the browser entry, exporting `outlet` and the components;
   - `Server/App_Data/components/server.cjs`, the server bundle, exporting `renderOutlets`.
 

@@ -1,7 +1,6 @@
 import { Component, ComponentType, ReactNode, Suspense, useLayoutEffect, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
-import { resolve } from "./resolve";
 
 /**
  * The browser's half: one React tree for a Web Forms page, with each component the page places rendered
@@ -11,11 +10,11 @@ import { resolve } from "./resolve";
  * each of them sees — although they are scattered through markup the server rendered. There is no
  * router: navigating is the page's business.
  *
- * The browser entry exports the `outlet` this makes, and `Component` writes the import and the call, with
- * the name the page gave it:
+ * The browser entry exports the `outlet` this makes, beside the components. `Component` writes the
+ * import, finds the component in the module by the name the page gave it, and calls `outlet` with it:
  *
  *     import("/components/client.js").then(m =>
- *         m.outlet("Greeting", document.getElementById("…"), { name: "Ada" }));
+ *         m.outlet(m.Greeting, document.getElementById("…"), { name: "Ada" }));
  *
  * Where the server rendered the component first, its HTML stays on show until the component has
  * rendered here, and is then replaced by it. Not hydration: the tree is one, rendered through portals,
@@ -40,12 +39,12 @@ export type OutletOptions = {
 
 /**
  * Places a component on the page: it renders into the element, as part of the page's one tree.
- * @param name the component's name, resolved by `resolve`
+ * @param component the component
  * @param element the element it appears in
  * @param props its props
  * @returns a function that removes it again
  */
-export type Outlet = (name: string, element: Element, props: object) => () => void;
+export type Outlet = (component: ComponentType<object>, element: Element, props: object) => () => void;
 
 /** A place on the page where a component is to appear. */
 type Placement = {
@@ -100,10 +99,9 @@ function Placed({ element, target }: { element: Element; target: HTMLElement }) 
 /**
  * Makes the page's tree, and the `outlet` that places components in it. The tree is started by the first
  * component placed.
- * @param components the components a page may place, by name or by a dotted path
  * @param options how the tree is made
  */
-export function createOutlets(components: object, options: OutletOptions = {}): Outlet {
+export function createOutlets(options: OutletOptions = {}): Outlet {
     const Wrap = options.providers ?? (({ children }: { children: ReactNode }) => <>{children}</>);
     const fallback = options.fallback ?? <span data-react-error="">This section could not be shown.</span>;
     const onError = options.onError ?? ((error: unknown) => console.error(error));
@@ -160,12 +158,7 @@ export function createOutlets(components: object, options: OutletOptions = {}): 
             </Wrap>);
     }
 
-    return (name, element, props) => {
-        const component = resolve(components, name);
-        if (component === undefined) {
-            throw new Error(`The client has no component ${name}.`);
-        }
-
+    return (component, element, props) => {
         if (started === false) {
             start();
         }

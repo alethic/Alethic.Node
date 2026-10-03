@@ -1,6 +1,5 @@
 import { ComponentType, ReactNode } from "react";
 import { prerender } from "react-dom/static";
-import { resolve } from "./resolve";
 
 /**
  * The server's half: renders a Web Forms page's components to HTML on Node embedded in the worker
@@ -33,10 +32,10 @@ export type RenderOptions = {
     providers?: ProvidersFactory;
 };
 
-/** A component the page placed, and what to render it with. */
+/** A component the page placed, found in this module by its name, and what to render it with. */
 export type OutletRequest = {
     id: string;
-    component: string;
+    component: ComponentType<object>;
     props: Record<string, unknown>;
 };
 
@@ -161,10 +160,9 @@ function turn() {
 
 /**
  * Makes the `renderOutlets` a server bundle exports.
- * @param components the components a page may place, by name or by a dotted path
- * @param options how they are rendered
+ * @param options how components are rendered
  */
-export function createRenderOutlets(components: object, options: RenderOptions = {}): RenderOutlets {
+export function createRenderOutlets(options: RenderOptions = {}): RenderOutlets {
     listen();
 
     return async requests => {
@@ -173,12 +171,7 @@ export function createRenderOutlets(components: object, options: RenderOptions =
         const rendered: Record<string, Rendered> = {};
 
         for (const request of requests) {
-            const Placed = resolve(components, request.component);
-            if (Placed === undefined) {
-                rendered[request.id] = { error: { message: `The client has no component ${request.component}.` } };
-                continue;
-            }
-
+            const Placed = request.component;
             let error: RenderError | null = null;
             try {
                 const props = track(request.props, render, request.id) as object;

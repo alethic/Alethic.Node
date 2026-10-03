@@ -15,37 +15,47 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace Alethic.Node.AspNet.Components.Tests;
 
 /// <summary>
-/// The server render against a server bundle that keeps <c>renderOutlets</c>' contract without a framework: props marshalled,
-/// commands raised on the request, failures carried back, and the site fetched in process.
+/// The server render against a server module that keeps <c>renderOutlets</c>' contract without a framework: components
+/// found by name, props marshalled, commands raised on the request, failures carried back, and the site fetched in
+/// process.
 /// </summary>
 [TestClass]
 public class ComponentServerRenderTests
 {
 
     /// <summary>
-    /// A server bundle that does what each component's name says.
+    /// A server module whose components are functions answering what became of them, and whose
+    /// <c>renderOutlets</c> calls each component it is given.
     /// </summary>
     static readonly NodeModuleSource Bundle = TestModules.FromText("bundle.cjs", """
+        const Echo = props => ({ html: JSON.stringify(props, (k, v) => typeof v === 'function' ? `fn:${v.name}` : v) });
+
+        async function Command(props) {
+            try {
+                return { html: JSON.stringify(await props.onGo(1, 'two')) ?? 'undefined' };
+            } catch (e) {
+                return { error: { message: e.message, dotnetErrorId: e.dotnetErrorId } };
+            }
+        }
+
+        async function Fetch() {
+            return { html: await (await fetch('/data?x=1')).text() };
+        }
+
+        // Rendered by nobody: renderOutlets says nothing of it.
+        const Forgets = { forgotten: true };
+
         module.exports = {
+            Echo,
+            Command,
+            Fetch,
+            Forgets,
+            Nested: { Deeper: { Echo } },
             async renderOutlets(requests) {
                 const out = {};
                 for (const r of requests) {
-                    switch (r.component) {
-                        case 'Echo':
-                            out[r.id] = { html: JSON.stringify(r.props, (k, v) => typeof v === 'function' ? `fn:${v.name}` : v) };
-                            break;
-                        case 'Command':
-                            try {
-                                out[r.id] = { html: JSON.stringify(await r.props.onGo(1, 'two')) ?? 'undefined' };
-                            } catch (e) {
-                                out[r.id] = { error: { message: e.message, dotnetErrorId: e.dotnetErrorId } };
-                            }
-                            break;
-                        case 'Fetch':
-                            out[r.id] = { html: await (await fetch('/data?x=1')).text() };
-                            break;
-                        case 'Forgets':
-                            break;
+                    if (r.component.forgotten !== true) {
+                        out[r.id] = await r.component(r.props);
                     }
                 }
                 return JSON.stringify(out);
@@ -107,6 +117,30 @@ public class ComponentServerRenderTests
 
         var rendered = await ComponentServerRender.RenderAsync(Request(), pool, Bundle, [Outlet("a", "Echo", props)], TimeSpan.FromSeconds(30));
         Assert.AreEqual("""{"title":"<b>","count":1.5,"none":null,"nested":{"list":[true,"fn:Pick"]},"onGo":"fn:Go"}""", rendered["a"].Html);
+    }
+
+    /// <summary>
+    /// A name is a dotted path through the module's exports, and the component found is what <c>renderOutlets</c> is
+    /// given.
+    /// </summary>
+    [TestMethod]
+    public async Task A_name_is_a_path_through_the_exports()
+    {
+        var rendered = await ComponentServerRender.RenderAsync(Request(), pool, Bundle, [Outlet("a", "Nested.Deeper.Echo", new ComponentObject { { "x", 1 } })], TimeSpan.FromSeconds(30));
+        Assert.AreEqual("""{"x":1}""", rendered["a"].Html);
+    }
+
+    /// <summary>
+    /// A name the module has nothing at fails that component, naming it, and leaves the others to render.
+    /// </summary>
+    [TestMethod]
+    public async Task A_name_the_module_lacks_fails_its_component()
+    {
+        var rendered = await ComponentServerRender.RenderAsync(Request(), pool, Bundle, [Outlet("a", "Nested.Missing", []), Outlet("b", "Echo", [])], TimeSpan.FromSeconds(30));
+
+        Assert.IsNull(rendered["a"].Html);
+        StringAssert.Contains(rendered["a"].Error!.Message, "Nested.Missing");
+        Assert.AreEqual("{}", rendered["b"].Html);
     }
 
     /// <summary>

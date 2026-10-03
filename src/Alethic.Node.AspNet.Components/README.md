@@ -8,16 +8,20 @@ Lets an ASP.NET Web Forms page host JavaScript components — React, or any othe
 - it renders on the server, on Node embedded in the worker process through
   [Alethic.Node.AspNet](https://www.nuget.org/packages/Alethic.Node.AspNet).
 
-The JavaScript half is your own client, which builds two bundles to the contract under [The client](#the-client):
-- **A browser entry:** an ES module that exports `outlet`.
-- **A server bundle:** one self-contained CommonJS file that exports `renderOutlets`.
+A control names a component by two things: the **module** it is in, and its **name** within that module. Each side has
+its own module, because each side has its own build:
+- **`Module`**, for the browser: an ES module that exports `outlet` and the components.
+- **`ServerModule`**, for the server: a CommonJS file that exports `renderOutlets` and the same components.
+
+Both follow the contract under [The modules](#the-modules).
 
 ## On a page
 
 ```aspx
 <%@ Register Assembly="Alethic.Node.AspNet.Components" Namespace="Alethic.Node.AspNet.Components" TagPrefix="node" %>
 
-<node:Component ID="rcPanel" runat="server" Name="GreetingPanel" OnCommand="rcPanel_Command">
+<node:Component ID="rcPanel" runat="server" OnCommand="rcPanel_Command"
+    Module="~/client/client.js" ServerModule="~/App_Data/client/server.cjs" Name="GreetingPanel">
     <node:ComponentProp Name="title" Value="Hello" />
     <node:ComponentProp Name="limit" Value="5" Type="Number" />
     <node:ComponentProp Name="filter">
@@ -72,32 +76,33 @@ protected void rcPanel_Command(object sender, ComponentCommandEventArgs e)
 
 ## Properties
 
-Beside `Component`, `Props` and `OnClientCommand`, the control has properties whose defaults work for a client built to
-them, so nothing needs setting:
+Beside `Props` and `OnClientCommand`:
 
-| Property | Default | |
-| --- | --- | --- |
-| `Script` | `~/components/client.js` | The browser entry. It must be there; a `~/` path is stamped with its write time. |
-| `ServerBundle` | `~/App_Data/components/server.cjs` | The server bundle. At the default path, components render on the server only if it is there; a path set otherwise must be there; empty renders only in the browser. |
-| `ServerRender` | `true` | Whether this component renders on the server. |
-| `ServerRenderTimeout` | `00:00:10` | How long the page waits for its server render. |
-| `ScriptAttributes` | none | Attributes for the inline script that places the component, for sites whose filters rewrite inline scripts. |
+| Property | |
+| --- | --- |
+| `Module` | The browser's module. Required. A `~/` path must be there, and is stamped with its write time; any other URL or specifier is imported as it is. |
+| `ServerModule` | The server's module, `require`d by Node in the worker process. A `~/` or absolute path, which must be there. Without it the component renders only in the browser. |
+| `Name` | The component: an export of the module, or a dotted path through one, as `Catalog.ProductCard`. Found in `Module` in the browser and in `ServerModule` on the server. |
+| `ServerRender` | Whether this component renders on the server, where there is a `ServerModule`. `true` unless set. |
+| `ServerRenderTimeout` | How long the page waits for its server render. Ten seconds unless set. |
+| `ScriptAttributes` | Attributes for the inline script that places the component, for sites whose filters rewrite inline scripts. |
 
-To set one for every control on the site, use a skin in the site's theme:
+The control assumes nothing about where a site keeps its JavaScript. To set the modules for every control on the site,
+use a skin in the site's theme, set as a style sheet theme so a page's own values win:
 
 ```aspx
-<node:Component runat="server" Script="~/client/index.js" ScriptAttributes='data-nodefer="true"' />
+<node:Component runat="server" Module="~/client/client.js" ServerModule="~/App_Data/client/server.cjs" />
 ```
 
-The page links the client's stylesheet, if it has one, as it links any other. The pool is `AspNetNode.Pool` (see
+The page links the module's stylesheet, if it has one, as it links any other. The pool is `AspNetNode.Pool` (see
 Alethic.Node.AspNet).
 
 ## Server rendering
 
-When the client has a server bundle, a page's components render once `PreRender` is complete: in one call for all
-those that share a bundle. Each
-control then sends its component's HTML inside its element. The browser shows that HTML until the component has
-rendered there. Whether it then replaces that HTML or hydrates it is the client's choice.
+Where a control has a `ServerModule`, its component renders once `PreRender` is complete, in one call to that module's
+`renderOutlets` for all the components on the page that share it. Each control then sends its component's HTML inside
+its element. The browser shows that HTML until the component has rendered there. Whether it then replaces that HTML or
+hydrates it is the module's choice.
 
 A component's `fetch` of the site is answered in process, by the site's own handler, as the visitor (see
 Alethic.Node.AspNet).
@@ -105,21 +110,25 @@ Alethic.Node.AspNet).
 Nothing that fails is passed over:
 - A component that throws, or that rejects one of its callbacks' promises without catching it, makes its control throw
   a `ComponentRenderException` from its render. A command handler's exception becomes the inner exception.
+- A `Name` the module has nothing at fails that component the same way.
 - A render that fails as a whole, or that times out, fails the page.
-- A server bundle that is rebuilt while the site runs is not picked up until the application pool recycles.
+- A server module that is rebuilt while the site runs is not picked up until the application pool recycles.
 
-## The client
+## The modules
 
-The control and your client meet at two functions. How they render is up to the client: which framework, one root per
-component or one for the page, replacing the server's HTML or hydrating it. The examples here use React.
+The control finds the component in the module, then hands it to one of two functions the module exports. How they render
+is up to the module: which framework, one root per component or one for the page, replacing the server's HTML or
+hydrating it. The examples here use React.
 
-### `outlet(name, element, props)`
+Each module is self-contained, as far as the control is concerned. Components from different modules come from
+different builds, and share nothing their modules don't share, React included. That is the modules' author's to arrange
+where it is wanted.
 
-Exported by the browser entry.
+### `outlet(component, element, props)`
 
-- **`name`** is the control's `Name`, as written. The client resolves it to a component, the same way its
-  `renderOutlets` does: as an export, a dotted path through its exports, a registry, or anything else. One it cannot
-  resolve should throw.
+Exported by the browser's module.
+
+- **`component`** is what `Name` found in the module.
 - **`element`** is the control's element. It holds the server's HTML where the component rendered on the server.
 - **`props`** are the component's props. Each callback is already a function returning a promise of the command's
   result; pass it through.
@@ -127,18 +136,14 @@ Exported by the browser entry.
 
 The control calls `outlet` from a script it registers with the page's `ScriptManager` where there is one, so it calls
 it again for the same element id after every partial postback that renders the control. Noticing that an element has
-left the page, and unmounting what was in it, is the entry's job.
+left the page, and unmounting what was in it, is the module's job.
 
 ```tsx
 import { createRoot } from "react-dom/client";
-import * as components from "./components";
 
-export function outlet(name, element, props) {
-    const Component = name.split(".").reduce((o, key) => o?.[key], components);
-    if (Component === undefined) {
-        throw new Error(`The client has no component ${name}.`);
-    }
+export * from "./components";
 
+export function outlet(Component, element, props) {
     const root = createRoot(element);
     root.render(<Component {...props} />);
     return () => root.unmount();
@@ -147,13 +152,13 @@ export function outlet(name, element, props) {
 
 ### `renderOutlets(requests)`
 
-Exported by the server bundle, which runs on Node embedded in the worker process. That runtime resolves nothing but
-Node's built-ins, so the bundle is one CommonJS file with every dependency inside it, without `import()`, and with
-`process.env.NODE_ENV` defined.
+Exported by the server's module, which runs on Node embedded in the worker process. That runtime cannot `import()`, so
+the module is CommonJS. Node's `require` resolves what it requires as it would for any program, so a module that
+bundles its dependencies needs nothing beside it. A bundled module also needs `process.env.NODE_ENV` defined.
 
-- **`requests`** is every component on the page that renders on the server: `[{ id, component, props }]`, where
-  `component` is the control's `Name`, which the client resolves as its `outlet` does. Each callback in the props is a function returning a promise, which
-  raises the command on the page there and then.
+- **`requests`** is every component on the page that renders on the server with this module: `[{ id, component, props }]`,
+  where `component` is what `Name` found in the module. Each callback in the props is a function returning a promise,
+  which raises the command on the page there and then.
 - **It resolves to** JSON naming what became of every component, by `id`: `{ html }`, or
   `{ error: { message, stack, componentStack, dotnetErrorId } }`. A component it says nothing of fails the page.
 - **A command whose handler threw** rejects with an `Error` carrying `dotnetErrorId`. Returning that id in the
@@ -164,12 +169,12 @@ process by the site's own handler, as the visitor.
 
 ```tsx
 import { prerender } from "react-dom/static";
-import * as components from "./components";
+
+export * from "./components";
 
 export async function renderOutlets(requests) {
     const rendered = {};
-    for (const { id, component, props } of requests) {
-        const Component = component.split(".").reduce((o, key) => o?.[key], components);
+    for (const { id, component: Component, props } of requests) {
         let error = null;
         try {
             const { prelude } = await prerender(<Component {...props} />, {
@@ -189,9 +194,8 @@ function describe(e, componentStack) {
 }
 ```
 
-The control trusts what `renderOutlets` reports, so failures are failures only as far as the client reports them.
+The control trusts what `renderOutlets` reports, so failures are failures only as far as the module reports them.
 React, for one, recovers from some errors by leaving a component to the browser, and tells only `onError`, which the
-example reports. A
-stricter client also waits for the commands each component called and fails a component that left one's rejection
-unhandled: wrap each callback, mark the rejections that pass through it as that component's, and check Node's
-`unhandledRejection` reports for them before answering.
+example reports. A stricter module also waits for the commands each component called and fails a component that left
+one's rejection unhandled: wrap each callback, mark the rejections that pass through it as that component's, and check
+Node's `unhandledRejection` reports for them before answering.
