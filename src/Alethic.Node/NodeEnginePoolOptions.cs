@@ -70,8 +70,9 @@ public class NodeEnginePoolOptions
     public Func<IServiceProvider, NodeEngineLease, Task>? ConfigureEngine { get; set; }
 
     /// <summary>
-    /// Path to the native Node library, when it cannot be located beside the application or under its
-    /// runtime identifier.
+    /// Path to the native Node library. Unset, it is found where the Microsoft.JavaScript.LibNode packages put it: under
+    /// the application's <c>runtimes/&lt;rid&gt;/native</c>, beside a published application, or, for ASP.NET on .NET
+    /// Framework, under the site's <c>bin</c>.
     /// </summary>
     public string? LibNodePath { get; set; }
 

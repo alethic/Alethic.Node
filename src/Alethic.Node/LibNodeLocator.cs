@@ -5,73 +5,65 @@ using System.Runtime.InteropServices;
 namespace Alethic.Node;
 
 /// <summary>
-/// Finds the native Node library to embed.
+/// Says where the native Node library is, where node-api-dotnet would not find it by itself.
 /// </summary>
+/// <remarks>
+/// Given no path, node-api-dotnet looks under the application's base directory, at
+/// <c>runtimes/&lt;rid&gt;/native</c>, where the Microsoft.JavaScript.LibNode packages put the library, and then
+/// loads it by name, which finds it beside a published application. The one host that leaves it elsewhere is
+/// ASP.NET on .NET Framework, whose base directory is the site while its binaries are in the AppDomain's private
+/// <c>bin</c>: there the library is looked for under that.
+/// </remarks>
 static class LibNodeLocator
 {
 
     /// <summary>
-    /// Resolves the library, preferring an explicitly configured path.
+    /// The library to load: the configured one; on .NET Framework, the one under the AppDomain's private <c>bin</c>,
+    /// where it has one; or <see langword="null"/>, for node-api-dotnet to find.
     /// </summary>
-    /// <remarks>
-    /// Two layouts have to be handled because publishing flattens the native asset next to the
-    /// binary while an ordinary build leaves it under a runtime identifier.
-    /// </remarks>
     /// <param name="configured"></param>
     /// <exception cref="FileNotFoundException"></exception>
-    public static string Locate(string? configured)
+    public static string? Locate(string? configured)
     {
         if (string.IsNullOrEmpty(configured) == false)
             return File.Exists(configured)
-                ? configured!
+                ? configured
                 : throw new FileNotFoundException($"Configured Node runtime not found at '{configured}'.", configured);
 
-        var file = FileName;
-
-        var flat = Path.Combine(AppContext.BaseDirectory, file);
-        if (File.Exists(flat))
-            return flat;
-
-        var rid = Path.Combine(AppContext.BaseDirectory, "runtimes", RuntimeIdentifier, "native", file);
-        if (File.Exists(rid))
-            return rid;
-
-        throw new FileNotFoundException(
-            $"No {file} beside the application or under runtimes/{RuntimeIdentifier}/native. " +
-            $"Reference the Microsoft.JavaScript.LibNode package for this runtime identifier, or set the runtime path explicitly.");
-    }
-
-    /// <summary>
-    /// The runtime identifier the native asset is laid out under.
-    /// </summary>
-    /// <remarks>
-    /// .NET Framework has no <c>RuntimeInformation.RuntimeIdentifier</c>, and runs on Windows alone, so there it is
-    /// Windows and the process's architecture.
-    /// </remarks>
-    static string RuntimeIdentifier
-    {
-        get
-        {
 #if NETFRAMEWORK
-            return "win-" + RuntimeInformation.ProcessArchitecture switch
-            {
-                Architecture.X64 => "x64",
-                Architecture.X86 => "x86",
-                Architecture.Arm64 => "arm64",
-                Architecture.Arm => "arm",
-                var other => other.ToString().ToLowerInvariant(),
-            };
-#else
-            return RuntimeInformation.RuntimeIdentifier;
-#endif
+        var bin = AppDomain.CurrentDomain.RelativeSearchPath;
+        if (string.IsNullOrEmpty(bin) == false)
+        {
+            var file = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, bin, "runtimes", "win-" + Architecture, "native", FileName);
+            if (File.Exists(file))
+                return file;
         }
+#endif
+
+        return null;
     }
 
     /// <summary>
-    /// Platform-specific library file name.
+    /// The library's file name on this platform.
     /// </summary>
-    static string FileName => RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "libnode.dll"
+    public static string FileName => RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "libnode.dll"
         : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "libnode.dylib"
         : "libnode.so";
+
+#if NETFRAMEWORK
+
+    /// <summary>
+    /// The process's architecture, as a runtime identifier names it. .NET Framework runs on Windows alone.
+    /// </summary>
+    static string Architecture => RuntimeInformation.ProcessArchitecture switch
+    {
+        System.Runtime.InteropServices.Architecture.X64 => "x64",
+        System.Runtime.InteropServices.Architecture.X86 => "x86",
+        System.Runtime.InteropServices.Architecture.Arm64 => "arm64",
+        System.Runtime.InteropServices.Architecture.Arm => "arm",
+        var other => other.ToString().ToLowerInvariant(),
+    };
+
+#endif
 
 }
