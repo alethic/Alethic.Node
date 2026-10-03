@@ -29,10 +29,9 @@ public static class AspNetReact
     const string SettingsPrefix = "Alethic:React:";
 
     /// <summary>
-    /// The client's browser entry: an ES module exporting <c>outlet</c> and each component a page may place, as
-    /// <c>@alethic/node-aspnet-react/client</c>'s <c>createOutlets</c> makes it. A path from the application's root,
-    /// <c>~/</c>, is stamped with the file's write time, so a new build is not served from a browser's cache; any other
-    /// URL is used as it is.
+    /// The client's browser entry: an ES module exporting <c>outlet</c> and each component a page may place. A path from
+    /// the application's root, <c>~/</c>, is stamped with the file's write time, so a new build is not served from a
+    /// browser's cache; any other URL is used as it is.
     /// </summary>
     public static string? Script { get; set; } = Setting("Script");
 
@@ -49,10 +48,9 @@ public static class AspNetReact
     public static string? ScriptAttributes { get; set; } = Setting("ScriptAttributes");
 
     /// <summary>
-    /// The client's server bundle: one self-contained CommonJS file exporting <c>renderOutlets</c>, as
-    /// <c>@alethic/node-aspnet-react/server</c>'s <c>createRenderOutlets</c> makes it. Components render on the server
-    /// where this is set, and only in the browser where it is not. A path from the application's root, <c>~/</c>, or an
-    /// absolute one; somewhere nothing serves it, such as <c>~/App_Data</c>.
+    /// The client's server bundle: one self-contained CommonJS file exporting <c>renderOutlets</c>. Components render on
+    /// the server where this is set, and only in the browser where it is not. A path from the application's root,
+    /// <c>~/</c>, or an absolute one; somewhere nothing serves it, such as <c>~/App_Data</c>.
     /// </summary>
     public static string? ServerBundle { get; set; } = Setting("ServerBundle");
 

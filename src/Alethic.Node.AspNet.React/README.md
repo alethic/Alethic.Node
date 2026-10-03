@@ -10,7 +10,7 @@ other control on the page:
 
 Every component on a page shares one React tree, so whatever context the root provides, each component sees it.
 
-The JavaScript half is the npm package `@alethic/node-aspnet-react`. Your client builds two bundles with it:
+The JavaScript half is your own client, which builds two bundles to the contract under [The client](#the-client):
 - **A browser entry:** an ES module that exports `outlet` and your components.
 - **A server bundle:** one self-contained CommonJS file that exports `renderOutlets`.
 
@@ -100,3 +100,88 @@ Nothing that fails is passed over:
   a `ReactRenderException` from its render. A command handler's exception becomes the inner exception.
 - A render that fails as a whole, or that times out, fails the page.
 - A server bundle that is rebuilt while the site runs is not picked up until the application pool recycles.
+
+## The client
+
+The control and your client meet at two functions. How they render is up to the client: one React root per component,
+or one root for the page with each component in a portal; replacing the server's HTML, or hydrating it.
+
+### `outlet(component, element, props)`
+
+Exported by the browser entry, beside every component a page may place.
+
+- **`component`** is the export the control names, or `undefined` where the entry exports nothing by that name.
+- **`element`** is the control's element. It holds the server's HTML where the component rendered on the server.
+- **`props`** are the component's props. Each callback is already a function returning a promise of the command's
+  result; pass it through.
+- **It returns** a function that removes the component. The control never calls it.
+
+The control calls `outlet` from a script it registers with the page's `ScriptManager` where there is one, so it calls
+it again for the same element id after every partial postback that renders the control. Noticing that an element has
+left the page, and unmounting what was in it, is the entry's job.
+
+```tsx
+import { createRoot } from "react-dom/client";
+
+export { GreetingPanel } from "./GreetingPanel";
+
+export function outlet(Component, element, props) {
+    if (Component === undefined) {
+        throw new Error("The client exports no such component.");
+    }
+
+    const root = createRoot(element);
+    root.render(<Component {...props} />);
+    return () => root.unmount();
+}
+```
+
+### `renderOutlets(requests)`
+
+Exported by the server bundle, which runs on Node embedded in the worker process. That runtime resolves nothing but
+Node's built-ins, so the bundle is one CommonJS file with every dependency inside it, without `import()`, and with
+`process.env.NODE_ENV` defined.
+
+- **`requests`** is every component on the page that renders on the server: `[{ id, component, props }]`, where
+  `component` is the name the control was given. Each callback in the props is a function returning a promise, which
+  raises the command on the page there and then.
+- **It resolves to** JSON naming what became of every component, by `id`: `{ html }`, or
+  `{ error: { message, stack, componentStack, dotnetErrorId } }`. A component it says nothing of fails the page.
+- **A command whose handler threw** rejects with an `Error` carrying `dotnetErrorId`. Returning that id in the
+  component's error makes the handler's exception the inner exception of the control's `ReactRenderException`.
+
+A `fetch` of the site made while `renderOutlets` runs, to a relative URL or the page's own origin, is answered in
+process by the site's own handler, as the visitor.
+
+```tsx
+import { prerender } from "react-dom/static";
+import * as components from "./components";
+
+export async function renderOutlets(requests) {
+    const rendered = {};
+    for (const { id, component, props } of requests) {
+        const Component = components[component];
+        let error = null;
+        try {
+            const { prelude } = await prerender(<Component {...props} />, {
+                onError: (e, info) => { error ??= describe(e, info?.componentStack); },
+            });
+            const html = await new Response(prelude).text();
+            rendered[id] = error ? { error } : { html };
+        } catch (e) {
+            rendered[id] = { error: error ?? describe(e) };
+        }
+    }
+    return JSON.stringify(rendered);
+}
+
+function describe(e, componentStack) {
+    return { message: e?.message ?? String(e), stack: e?.stack, componentStack, dotnetErrorId: e?.dotnetErrorId };
+}
+```
+
+The control trusts what `renderOutlets` reports, so failures are failures only as far as the client reports them. React
+recovers from some errors by leaving a component to the browser, and tells only `onError`, which the example reports. A
+stricter client also waits for the commands each component called and fails a component that left one's rejection
+unhandled: wrap each callback, mark the rejections that pass through it as that component's, and check Node's
+`unhandledRejection` reports for them before answering.
