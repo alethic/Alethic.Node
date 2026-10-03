@@ -4,13 +4,13 @@ using System.Text.Json;
 namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
-/// A callback in a <see cref="NodeComponent"/>'s props: a function the component calls, which raises the control's
+/// A callback in a <see cref="Component"/>'s props: a function the component calls, which raises the control's
 /// command by name, as a button's <c>CommandName</c> raises its container's command.
 /// </summary>
 /// <remarks>
 /// All a callback carries is the name it raises, so it goes anywhere in the props and is kept in view state as that
-/// name. The page dispatches on the name in its handler of <see cref="NodeComponent.Command"/>, and the browser in its
-/// <see cref="NodeComponent.OnClientCommand"/>.
+/// name. The page dispatches on the name in its handler of <see cref="Component.Command"/>, and the browser in its
+/// <see cref="Component.OnClientCommand"/>.
 /// </remarks>
 public sealed class ComponentCommand : ComponentValue
 {

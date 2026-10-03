@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
-/// A value in a <see cref="NodeComponent"/>'s props: a <see cref="ComponentScalar"/>, a <see cref="ComponentObject"/>,
+/// A value in a <see cref="Component"/>'s props: a <see cref="ComponentScalar"/>, a <see cref="ComponentObject"/>,
 /// a <see cref="ComponentArray"/>, or a <see cref="ComponentCommand"/>, which the component receives as a function.
 /// </summary>
 /// <remarks>

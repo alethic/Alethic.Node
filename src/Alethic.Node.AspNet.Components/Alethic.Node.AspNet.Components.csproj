@@ -2,7 +2,7 @@
 
     <PropertyGroup>
         <TargetFrameworks>net472</TargetFrameworks>
-        <Description>JavaScript components hosted on ASP.NET Web Forms pages: a NodeComponent control whose props are set in markup and code and kept in view state, whose callbacks raise server commands, and which renders on the server on Node embedded in the worker process, through two functions the site's own client provides.</Description>
+        <Description>JavaScript components hosted on ASP.NET Web Forms pages: a Component control whose props are set in markup and code and kept in view state, whose callbacks raise server commands, and which renders on the server on Node embedded in the worker process, through two functions the site's own client provides.</Description>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>icon.png</PackageIcon>
         <PackageTags>aspnet;webforms;system.web;components;react;ssr;node;libnode</PackageTags>

@@ -12,13 +12,13 @@ namespace Alethic.Node.AspNet.Components.Tests;
 /// The control apart from a page: its props from markup, its view state, and its commands.
 /// </summary>
 [TestClass]
-public class NodeComponentTests
+public class ComponentTests
 {
 
     /// <summary>
     /// The control with its protected lifecycle exposed.
     /// </summary>
-    sealed class Exposed : NodeComponent
+    sealed class Exposed : Component
     {
 
         /// <summary>
@@ -44,7 +44,7 @@ public class NodeComponentTests
     /// </summary>
     static Exposed Declared()
     {
-        var control = new Exposed() { ID = "rc", Component = "Panel" };
+        var control = new Exposed() { ID = "rc", Name = "Panel" };
         control.Controls.Add(new ComponentProp() { Name = "title", Value = "Pipettes" });
         control.Controls.Add(new ComponentProp() { Name = "count", Value = "3", Type = ComponentPropType.Number });
 
@@ -123,7 +123,7 @@ public class NodeComponentTests
     }
 
     /// <summary>
-    /// A command raises the control's <see cref="NodeComponent.Command"/>, with its arguments.
+    /// A command raises the control's <see cref="Component.Command"/>, with its arguments.
     /// </summary>
     [TestMethod]
     public void A_command_raises_the_command_event()

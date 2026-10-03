@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
-/// An object in a <see cref="NodeComponent"/>'s props: values by key, in the order they were set.
+/// An object in a <see cref="Component"/>'s props: values by key, in the order they were set.
 /// </summary>
 public sealed class ComponentObject : ComponentValue, IEnumerable<KeyValuePair<string, ComponentValue>>
 {

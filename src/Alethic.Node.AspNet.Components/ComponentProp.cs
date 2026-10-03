@@ -8,7 +8,7 @@ using System.Web.UI;
 namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
-/// One prop of a <see cref="NodeComponent"/>, or one value inside one: declared in markup, it builds the component's
+/// One prop of a <see cref="Component"/>, or one value inside one: declared in markup, it builds the component's
 /// props.
 /// </summary>
 /// <remarks>
@@ -22,7 +22,7 @@ namespace Alethic.Node.AspNet.Components;
 /// bound.
 ///
 /// Markup is applied again on every request, like any control's declared attributes, so a prop declared here takes no
-/// view state. <see cref="NodeComponent.Props"/> is where code changes them.
+/// view state. <see cref="Component.Props"/> is where code changes them.
 /// </remarks>
 [ParseChildren(false)]
 [PersistChildren(true)]
@@ -40,8 +40,9 @@ public class ComponentProp : Control
     /// own type unless <see cref="Type"/> asks for another.
     /// </summary>
     /// <remarks>
-    /// Text in markup reaches it as a string, through <see cref="ComponentPropValueConverter"/>: the page parser makes an
-    /// <see cref="object"/> from text only through a converter. A data-binding expression assigns its value as it is.
+    /// Text in markup reaches it as a string, through <see cref="ComponentPropValueConverter"/>: the page parser makes
+    /// an <see cref="object"/> from text only through a converter. A data-binding expression assigns its value as it
+    /// is.
     /// </remarks>
     [Bindable(true)]
     [TypeConverter(typeof(ComponentPropValueConverter))]

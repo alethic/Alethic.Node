@@ -5,7 +5,7 @@ using System.Web.UI;
 namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
-/// Builds the <see cref="ComponentProp"/>s and <see cref="ComponentCallback"/>s nested in a <see cref="NodeComponent"/>
+/// Builds the <see cref="ComponentProp"/>s and <see cref="ComponentCallback"/>s nested in a <see cref="Component"/>
 /// or a <see cref="ComponentProp"/> as controls without their needing <c>runat="server"</c>, as a list's items need
 /// none.
 /// </summary>

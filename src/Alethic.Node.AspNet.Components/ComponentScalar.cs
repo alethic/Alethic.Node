@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
-/// A string, number, boolean or <c>null</c> in a <see cref="NodeComponent"/>'s props.
+/// A string, number, boolean or <c>null</c> in a <see cref="Component"/>'s props.
 /// </summary>
 public sealed class ComponentScalar : ComponentValue
 {

@@ -4,7 +4,7 @@ using System.Web;
 namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
-/// A component of a <see cref="NodeComponent"/> failed while it rendered on the server: it threw, or rejected a promise
+/// A component of a <see cref="Component"/> failed while it rendered on the server: it threw, or rejected a promise
 /// of one of its callbacks without catching it. Thrown from the control's own render, as any control's failure to
 /// render is.
 /// </summary>

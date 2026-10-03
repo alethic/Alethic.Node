@@ -1,7 +1,7 @@
 # Alethic.Node.AspNet.Components
 
 Lets an ASP.NET Web Forms page host JavaScript components — React, or any other framework — through a
-`NodeComponent` control. The control behaves like any other control on the page:
+`Component` control. The control behaves like any other control on the page:
 - its props are set in markup and changed from code;
 - the props are kept in view state;
 - its callbacks raise server commands;
@@ -9,7 +9,7 @@ Lets an ASP.NET Web Forms page host JavaScript components — React, or any othe
   [Alethic.Node.AspNet](https://www.nuget.org/packages/Alethic.Node.AspNet).
 
 The JavaScript half is your own client, which builds two bundles to the contract under [The client](#the-client):
-- **A browser entry:** an ES module that exports `outlet` and your components.
+- **A browser entry:** an ES module that exports `outlet`.
 - **A server bundle:** one self-contained CommonJS file that exports `renderOutlets`.
 
 ## On a page
@@ -17,7 +17,7 @@ The JavaScript half is your own client, which builds two bundles to the contract
 ```aspx
 <%@ Register Assembly="Alethic.Node.AspNet.Components" Namespace="Alethic.Node.AspNet.Components" TagPrefix="node" %>
 
-<node:NodeComponent ID="rcPanel" runat="server" Component="GreetingPanel" OnCommand="rcPanel_Command">
+<node:Component ID="rcPanel" runat="server" Name="GreetingPanel" OnCommand="rcPanel_Command">
     <node:ComponentProp Name="title" Value="Hello" />
     <node:ComponentProp Name="limit" Value="5" Type="Number" />
     <node:ComponentProp Name="filter">
@@ -28,7 +28,7 @@ The JavaScript half is your own client, which builds two bundles to the contract
         <node:ComponentProp Value="name" />
     </node:ComponentProp>
     <node:ComponentCallback Name="onGreeted" CommandName="Greeted" />
-</node:NodeComponent>
+</node:Component>
 ```
 
 Nested props need no `runat="server"`, as a list's items need none. From code:
@@ -86,7 +86,7 @@ them, so nothing needs setting:
 To set one for every control on the site, use a skin in the site's theme:
 
 ```aspx
-<node:NodeComponent runat="server" Script="~/client/index.js" ScriptAttributes='data-nodefer="true"' />
+<node:Component runat="server" Script="~/client/index.js" ScriptAttributes='data-nodefer="true"' />
 ```
 
 The page links the client's stylesheet, if it has one, as it links any other. The pool is `AspNetNode.Pool` (see
@@ -113,11 +113,13 @@ Nothing that fails is passed over:
 The control and your client meet at two functions. How they render is up to the client: which framework, one root per
 component or one for the page, replacing the server's HTML or hydrating it. The examples here use React.
 
-### `outlet(component, element, props)`
+### `outlet(name, element, props)`
 
-Exported by the browser entry, beside every component a page may place.
+Exported by the browser entry.
 
-- **`component`** is the export the control names, or `undefined` where the entry exports nothing by that name.
+- **`name`** is the control's `Name`, as written. The client resolves it to a component, the same way its
+  `renderOutlets` does: as an export, a dotted path through its exports, a registry, or anything else. One it cannot
+  resolve should throw.
 - **`element`** is the control's element. It holds the server's HTML where the component rendered on the server.
 - **`props`** are the component's props. Each callback is already a function returning a promise of the command's
   result; pass it through.
@@ -129,12 +131,12 @@ left the page, and unmounting what was in it, is the entry's job.
 
 ```tsx
 import { createRoot } from "react-dom/client";
+import * as components from "./components";
 
-export { GreetingPanel } from "./GreetingPanel";
-
-export function outlet(Component, element, props) {
+export function outlet(name, element, props) {
+    const Component = name.split(".").reduce((o, key) => o?.[key], components);
     if (Component === undefined) {
-        throw new Error("The client exports no such component.");
+        throw new Error(`The client has no component ${name}.`);
     }
 
     const root = createRoot(element);
@@ -150,7 +152,7 @@ Node's built-ins, so the bundle is one CommonJS file with every dependency insid
 `process.env.NODE_ENV` defined.
 
 - **`requests`** is every component on the page that renders on the server: `[{ id, component, props }]`, where
-  `component` is the name the control was given. Each callback in the props is a function returning a promise, which
+  `component` is the control's `Name`, which the client resolves as its `outlet` does. Each callback in the props is a function returning a promise, which
   raises the command on the page there and then.
 - **It resolves to** JSON naming what became of every component, by `id`: `{ html }`, or
   `{ error: { message, stack, componentStack, dotnetErrorId } }`. A component it says nothing of fails the page.
@@ -167,7 +169,7 @@ import * as components from "./components";
 export async function renderOutlets(requests) {
     const rendered = {};
     for (const { id, component, props } of requests) {
-        const Component = components[component];
+        const Component = component.split(".").reduce((o, key) => o?.[key], components);
         let error = null;
         try {
             const { prelude } = await prerender(<Component {...props} />, {

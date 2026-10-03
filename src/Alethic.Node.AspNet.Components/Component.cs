@@ -16,8 +16,9 @@ namespace Alethic.Node.AspNet.Components;
 /// </summary>
 /// <remarks>
 /// Renders an element, and a script that imports the client, <see cref="Script"/>, and places the component in the
-/// element with the client's <c>outlet</c> function, which renders it however the client chooses. A component can be
-/// hosted once the client exports it. The page links the client's stylesheet, where it has one, as it links any other.
+/// element with the client's <c>outlet</c> function, given its <see cref="Name"/>, which the client resolves and
+/// renders however it chooses. A component can be hosted once the client exports it. The page links the client's
+/// stylesheet, where it has one, as it links any other.
 ///
 /// The component's props are <see cref="Props"/>: declared in markup with nested <see cref="ComponentProp"/>s, which
 /// build it on <c>Init</c>, as an <c>asp:ListItem</c> builds a list's items, and changed from code from there on. Props
@@ -52,7 +53,7 @@ namespace Alethic.Node.AspNet.Components;
 [ParseChildren(false)]
 [PersistChildren(true)]
 [ControlBuilder(typeof(ComponentPropsBuilder))]
-public class NodeComponent : WebControl, IPostBackEventHandler
+public class Component : WebControl, IPostBackEventHandler
 {
 
     /// <summary>
@@ -95,16 +96,17 @@ public class NodeComponent : WebControl, IPostBackEventHandler
     /// <summary>
     /// Initializes a new instance, rendering a <c>div</c>.
     /// </summary>
-    public NodeComponent()
+    public Component()
         : base(HtmlTextWriterTag.Div)
     {
 
     }
 
     /// <summary>
-    /// The component to place, by the name the client exports it under.
+    /// The component to place, by a name the client resolves: as an export, an object path, or however the client
+    /// chooses.
     /// </summary>
-    public string? Component { get; set; }
+    public string? Name { get; set; }
 
     /// <summary>
     /// The component's props: built from the markup's <see cref="ComponentProp"/>s on <c>Init</c>, and changed from
@@ -123,7 +125,7 @@ public class NodeComponent : WebControl, IPostBackEventHandler
     public string? OnClientCommand { get; set; }
 
     /// <summary>
-    /// The client's browser entry: an ES module exporting <c>outlet</c> and each component a page may place. A path
+    /// The client's browser entry: an ES module exporting <c>outlet</c>, which places a component by name. A path
     /// from the application's root, <c>~/</c>, must be there, and is stamped with the file's write time so that a new
     /// build is not served from a browser's cache; any other URL is used as it is. <c>~/components/client.js</c> unless
     /// set.
@@ -240,13 +242,13 @@ public class NodeComponent : WebControl, IPostBackEventHandler
     /// there is one; enlists the control in the page's server render where there is one.
     /// </summary>
     /// <param name="e">The event's arguments.</param>
-    /// <exception cref="InvalidOperationException">There is no <see cref="Component"/>, or no client.</exception>
+    /// <exception cref="InvalidOperationException">There is no <see cref="Name"/>, or no client.</exception>
     protected override void OnPreRender(EventArgs e)
     {
         base.OnPreRender(e);
 
-        if (string.IsNullOrEmpty(Component))
-            throw new InvalidOperationException($"NodeComponent '{ID}' needs a Component, the name of an export of the client.");
+        if (string.IsNullOrEmpty(Name))
+            throw new InvalidOperationException($"Component '{ID}' needs a Name, the name of an export of the client.");
 
         var script = Url(Script)
             ?? throw new InvalidOperationException($"The client is not built: there is no {Script}.");
@@ -274,17 +276,17 @@ public class NodeComponent : WebControl, IPostBackEventHandler
         WriteScript(props, Props);
         var attributes = string.IsNullOrWhiteSpace(ScriptAttributes) ? "" : " " + ScriptAttributes!.Trim();
         _outletScript = string.Format(
-            "<script{0}>import({1}).then(function (m) {{ var d = {2}; var c = function (n) {{ var f = function () {{ return d(n, Array.prototype.slice.call(arguments)); }}; Object.defineProperty(f, 'name', {{ value: n }}); return f; }}; m.outlet(m[{3}], document.getElementById({4}), {5}); }});</script>",
+            "<script{0}>import({1}).then(function (m) {{ var d = {2}; var c = function (n) {{ var f = function () {{ return d(n, Array.prototype.slice.call(arguments)); }}; Object.defineProperty(f, 'name', {{ value: n }}); return f; }}; m.outlet({3}, document.getElementById({4}), {5}); }});</script>",
             attributes,
             ToScript(script),
             dispatch,
-            ToScript(Component),
+            ToScript(Name),
             ToScript(ClientID),
             props);
 
         if (ScriptManager.GetCurrent(Page) is ScriptManager scriptManager)
         {
-            ScriptManager.RegisterStartupScript(this, typeof(NodeComponent), ClientID, _outletScript, false);
+            ScriptManager.RegisterStartupScript(this, typeof(Component), ClientID, _outletScript, false);
             _outletScript = null;
 
             // Its commands post back partially wherever it is, as an AJAX control's do: a full postback would replace the
@@ -426,7 +428,7 @@ public class NodeComponent : WebControl, IPostBackEventHandler
         if (File.Exists(file))
             return file;
 
-        return path == DefaultServerBundle ? null : throw new InvalidOperationException($"NodeComponent '{ID}': the server bundle is not built: there is no {path}.");
+        return path == DefaultServerBundle ? null : throw new InvalidOperationException($"Component '{ID}': the server bundle is not built: there is no {path}.");
     }
 
     /// <summary>
@@ -436,11 +438,11 @@ public class NodeComponent : WebControl, IPostBackEventHandler
     /// asynchronously.</param>
     internal ComponentOutlet Outlet(bool isAsync)
     {
-        return new ComponentOutlet(ClientID, Component!, Props, (name, args) =>
+        return new ComponentOutlet(ClientID, Name!, Props, (name, args) =>
         {
             var e = RaiseCommand(name, args, true);
             if (isAsync == false && e.Result is Task task && task.IsCompleted == false)
-                throw new InvalidOperationException($"NodeComponent '{ID}': the command '{name}' answers asynchronously, which needs its page to be Async=\"true\".");
+                throw new InvalidOperationException($"Component '{ID}': the command '{name}' answers asynchronously, which needs its page to be Async=\"true\".");
 
             return ResultJsonAsync(e.Result);
         });
@@ -451,7 +453,7 @@ public class NodeComponent : WebControl, IPostBackEventHandler
     /// </summary>
     /// <param name="controls">The controls.</param>
     /// <param name="rendered">What became of each component, by its element's id.</param>
-    static void Rendered(List<NodeComponent> controls, IReadOnlyDictionary<string, ComponentRendered> rendered)
+    static void Rendered(List<Component> controls, IReadOnlyDictionary<string, ComponentRendered> rendered)
     {
         foreach (var control in controls)
         {
@@ -474,7 +476,7 @@ public class NodeComponent : WebControl, IPostBackEventHandler
     public void RaisePostBackEvent(string eventArgument)
     {
         var posted = JsonSerializer.Deserialize<PostedCommand>(eventArgument, ComponentValue.WebOptions)
-            ?? throw new InvalidOperationException($"NodeComponent '{ID}' was posted no command.");
+            ?? throw new InvalidOperationException($"Component '{ID}' was posted no command.");
         var e = RaiseCommand(posted.Name ?? "", posted.Args, false);
 
         // The result goes back with a partial postback, to the promise the component's callback answered with. A full
@@ -486,7 +488,7 @@ public class NodeComponent : WebControl, IPostBackEventHandler
         if (e.Result is Task task && task.IsCompleted == false)
         {
             if (Page.IsAsync == false)
-                throw new InvalidOperationException($"NodeComponent '{ID}': the command '{e.CommandName}' answers asynchronously, which needs its page to be Async=\"true\".");
+                throw new InvalidOperationException($"Component '{ID}': the command '{e.CommandName}' answers asynchronously, which needs its page to be Async=\"true\".");
 
             Page.RegisterAsyncTask(new PageAsyncTask(async () => scriptManager.RegisterDataItem(this, await ResultJsonAsync(e.Result) ?? "null")));
             return;
@@ -506,7 +508,7 @@ public class NodeComponent : WebControl, IPostBackEventHandler
     internal ComponentCommandEventArgs RaiseCommand(string name, IReadOnlyList<JsonElement>? args, bool isServerRender)
     {
         if (Commands(Props).Contains(name) == false)
-            throw new InvalidOperationException($"NodeComponent '{ID}' has no command '{name}'.");
+            throw new InvalidOperationException($"Component '{ID}' has no command '{name}'.");
 
         var e = new ComponentCommandEventArgs(name, args, isServerRender);
         Command?.Invoke(this, e);
@@ -560,7 +562,7 @@ public class NodeComponent : WebControl, IPostBackEventHandler
         // What the component threw on the server, thrown here, from the control's own render, as any control's failure to
         // render is.
         if (_serverError is not null)
-            throw new ComponentRenderException(Component!, ID, _serverError.Message, _serverError.Stack, _serverError.ComponentStack, _serverError.Exception);
+            throw new ComponentRenderException(Name!, ID, _serverError.Message, _serverError.Stack, _serverError.ComponentStack, _serverError.Exception);
 
         base.Render(writer);
 
@@ -623,7 +625,7 @@ public class NodeComponent : WebControl, IPostBackEventHandler
         /// <summary>
         /// The controls.
         /// </summary>
-        public List<NodeComponent> Controls { get; } = [];
+        public List<Component> Controls { get; } = [];
 
         /// <summary>
         /// How long the render may take: the longest any of the controls allows.
@@ -634,7 +636,7 @@ public class NodeComponent : WebControl, IPostBackEventHandler
         /// Adds a control.
         /// </summary>
         /// <param name="control">The control.</param>
-        public void Add(NodeComponent control)
+        public void Add(Component control)
         {
             Controls.Add(control);
             if (control.ServerRenderTimeout > Timeout)

@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
-/// An array in a <see cref="NodeComponent"/>'s props.
+/// An array in a <see cref="Component"/>'s props.
 /// </summary>
 public sealed class ComponentArray : ComponentValue, IEnumerable<ComponentValue>
 {

@@ -8,7 +8,7 @@ using System.Web.UI.WebControls;
 namespace Alethic.Node.AspNet.Components;
 
 /// <summary>
-/// A command a <see cref="NodeComponent"/>'s component raised by calling one of its callback props.
+/// A command a <see cref="Component"/>'s component raised by calling one of its callback props.
 /// </summary>
 /// <remarks>
 /// A <see cref="CommandEventArgs"/>, so it bubbles as a button's command does: a container such as a <c>Repeater</c>
