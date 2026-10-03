@@ -29,5 +29,6 @@
   <Folder Name="/samples/">
     <Project Path="samples/Sample.Console/Sample.Console.csproj" />
     <Project Path="samples/Sample.React/Server/Sample.React.Server.csproj" />
+    <Project Path="samples/Sample.WebForms/Server/Sample.WebForms.csproj" />
   </Folder>
 </Solution>

@@ -185,3 +185,6 @@ var result = await pool.RunAsync(NodeModuleSource.FromFile("tool.cjs"), async ex
 - `samples/Sample.Console` — the pool with no web anywhere in sight: a console application takes a
   lease and drives a plain JavaScript module, synchronous calls, promises, and structured results
   alike, through ordinary node-api-dotnet.
+- `samples/Sample.WebForms` — React components on ASP.NET Web Forms pages with `NodeComponent`: props in markup,
+  bound and from code, full and partial postbacks, `UpdatePanel`s, async and sync pages, a `Repeater`, failures,
+  and a catalog sharing a cart with the master page. Build it, then serve its `Server` folder with IIS Express.

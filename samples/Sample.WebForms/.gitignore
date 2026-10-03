@@ -1,0 +1,5 @@
+Client/node_modules/
+Server/components/
+Server/App_Data/components/
+Server/bin/
+Server/obj/

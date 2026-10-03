@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+        A Web Forms site, as an SDK-style project: the code-behind compiles to bin\, beside the pages, which is all IIS
+        needs. Cogito.AspNet.MSBuild writes the binding redirects into Web.config on each build.
+    -->
+
+    <PropertyGroup>
+        <TargetFramework>net48</TargetFramework>
+        <RootNamespace>Sample.WebForms</RootNamespace>
+        <OutputPath>bin\</OutputPath>
+        <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+        <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+        <IsPackable>false</IsPackable>
+        <GenerateDocumentationFile>false</GenerateDocumentationFile>
+        <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+        <IsWebApplicationProject>true</IsWebApplicationProject>
+        <BuildClient Condition=" '$(BuildClient)' == '' ">true</BuildClient>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Reference Include="System.Configuration" />
+        <Reference Include="System.Web" />
+        <Reference Include="System.Web.Extensions" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Cogito.AspNet.MSBuild" Version="1.0.3" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.JavaScript.LibNode.win-x64" Version="20.1800.203" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\..\src\Alethic.Node.AspNet.Components\Alethic.Node.AspNet.Components.csproj" />
+    </ItemGroup>
+
+    <!-- The client, built to the paths NodeComponent looks in by default. Pass /p:BuildClient=false to skip it. -->
+    <Target Name="BuildClient" BeforeTargets="BeforeBuild" Condition=" '$(BuildClient)' == 'true' "
+            Inputs="@(ClientSource);..\Client\build.mjs;..\Client\package.json" Outputs="components\client.js;App_Data\components\server.cjs">
+        <Exec Command="npm ci --no-audit --no-fund" WorkingDirectory="..\Client" Condition=" !Exists('..\Client\node_modules') " />
+        <Exec Command="npm run build" WorkingDirectory="..\Client" />
+    </Target>
+
+    <ItemGroup>
+        <ClientSource Include="..\Client\src\**\*" />
+    </ItemGroup>
+
+</Project>
