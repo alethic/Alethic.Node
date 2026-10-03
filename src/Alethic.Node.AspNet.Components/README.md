@@ -70,22 +70,32 @@ protected void rcPanel_Command(object sender, ComponentCommandEventArgs e)
 - **Before posting back:** `OnClientCommand` names a JavaScript function that sees each command in the browser first.
   If it returns `false`, the command doesn't post back.
 
-## Settings
+## Properties
 
-| App setting | |
-| --- | --- |
-| `Alethic:Components:Script` | The browser entry, e.g. `~/client/index.js`. A `~/` path is stamped with its write time. |
-| `Alethic:Components:Stylesheet` | The client's stylesheet, linked once per page. Optional. |
-| `Alethic:Components:ServerBundle` | The server bundle, e.g. `~/App_Data/react/server.cjs`. Components render on the server only when this is set. |
-| `Alethic:Components:ServerRenderTimeout` | How long a page waits for its server render. Ten seconds by default. |
-| `Alethic:Components:ScriptAttributes` | Attributes for the inline script that places each component, for sites whose filters rewrite inline scripts. |
+Beside `Component`, `Props` and `OnClientCommand`, the control has properties whose defaults work for a client built to
+them, so nothing needs setting:
 
-Each setting also has a property on `AspNetComponents`, and `AspNetComponents.Pool` chooses a pool other than
-`AspNetNode.Pool`. A control can opt out of server rendering with `ServerRender="false"`.
+| Property | Default | |
+| --- | --- | --- |
+| `Script` | `~/components/client.js` | The browser entry. It must be there; a `~/` path is stamped with its write time. |
+| `ServerBundle` | `~/App_Data/components/server.cjs` | The server bundle. At the default path, components render on the server only if it is there; a path set otherwise must be there; empty renders only in the browser. |
+| `ServerRender` | `true` | Whether this component renders on the server. |
+| `ServerRenderTimeout` | `00:00:10` | How long the page waits for its server render. |
+| `ScriptAttributes` | none | Attributes for the inline script that places the component, for sites whose filters rewrite inline scripts. |
+
+To set one for every control on the site, use a skin in the site's theme:
+
+```aspx
+<node:NodeComponent runat="server" Script="~/client/index.js" ScriptAttributes='data-nodefer="true"' />
+```
+
+The page links the client's stylesheet, if it has one, as it links any other. The pool is `AspNetNode.Pool` (see
+Alethic.Node.AspNet).
 
 ## Server rendering
 
-When a server bundle is configured, all of a page's components render in one call once `PreRender` is complete. Each
+When the client has a server bundle, a page's components render once `PreRender` is complete: in one call for all
+those that share a bundle. Each
 control then sends its component's HTML inside its element. The browser shows that HTML until the component has
 rendered there. Whether it then replaces that HTML or hydrates it is the client's choice.
 

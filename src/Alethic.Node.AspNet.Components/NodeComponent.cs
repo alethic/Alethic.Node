@@ -15,9 +15,9 @@ namespace Alethic.Node.AspNet.Components;
 /// Hosts a JavaScript component on a Web Forms page.
 /// </summary>
 /// <remarks>
-/// Renders an element, and a script that imports the application's client, <see cref="AspNetComponents.Script"/>, and
-/// places the component in the element with the client's <c>outlet</c> function, which renders it however the client
-/// chooses. A component can be hosted once the client exports it.
+/// Renders an element, and a script that imports the client, <see cref="Script"/>, and places the component in the
+/// element with the client's <c>outlet</c> function, which renders it however the client chooses. A component can be
+/// hosted once the client exports it. The page links the client's stylesheet, where it has one, as it links any other.
 ///
 /// The component's props are <see cref="Props"/>: declared in markup with nested <see cref="ComponentProp"/>s, which
 /// build it on <c>Init</c>, as an <c>asp:ListItem</c> builds a list's items, and changed from code from there on. Props
@@ -33,18 +33,21 @@ namespace Alethic.Node.AspNet.Components;
 /// panel's new markup arrives without running the scripts in it, but registered scripts run. That is also why the
 /// script is a classic one that imports the client with <c>import()</c>, not a module.
 ///
-/// Where the application has a <see cref="AspNetComponents.ServerBundle"/>, the page's components are also rendered to
-/// HTML on the server, on Node embedded in the worker process, all in one call to the bundle's <c>renderOutlets</c>
-/// once the page's <c>PreRender</c> is complete, and each control sends its component's HTML inside its element, for
-/// the client to replace or hydrate. A command the component raises while it renders on the server raises <see
-/// cref="Command"/> there and then, in the page's own request. On a page that is <c>Async="true"</c> the render is an
-/// async page task, and a command may be answered asynchronously; on any other the request blocks while it renders, and
-/// a command answered asynchronously fails.
+/// Where the client has a server bundle, <see cref="ServerBundle"/>, the page's components are also rendered to HTML on
+/// the server, on Node embedded in the worker process, in one call to the bundle's <c>renderOutlets</c> for all those
+/// on the page that share it, once the page's <c>PreRender</c> is complete; and each control sends its component's HTML
+/// inside its element, for the client to replace or hydrate. A command the component raises while it renders on the
+/// server raises <see cref="Command"/> there and then, in the page's own request. On a page that is <c>Async="true"</c>
+/// the render is an async page task, and a command may be answered asynchronously; on any other the request blocks
+/// while it renders, and a command answered asynchronously fails.
 ///
 /// Nothing that fails is passed over. What the component throws while it renders on the server, or a promise of one of
 /// its callbacks it rejects without catching, is a <see cref="ComponentRenderException"/> thrown from this control's
 /// render; what stops the server render as a whole, or a client that is not built, fails the page. Either reaches the
 /// page's error handling as any control's or page's failure does.
+///
+/// Every property has a default that works for a client built to it, so a site sets only what it does differently: on
+/// the control, or for every control at once in a skin of the site's theme.
 /// </remarks>
 [ParseChildren(false)]
 [PersistChildren(true)]
@@ -53,14 +56,19 @@ public class NodeComponent : WebControl, IPostBackEventHandler
 {
 
     /// <summary>
-    /// Marks a request whose page has already been given the stylesheet, so a second control does not write it again.
+    /// The default <see cref="Script"/>.
     /// </summary>
-    static readonly object StylesheetRenderedKey = new();
+    const string DefaultScript = "~/components/client.js";
 
     /// <summary>
-    /// The controls on the page that render on the server, collected for the one call that renders them.
+    /// The default <see cref="ServerBundle"/>.
     /// </summary>
-    static readonly object ServerRenderedKey = new();
+    const string DefaultServerBundle = "~/App_Data/components/server.cjs";
+
+    /// <summary>
+    /// The page's server renders, by the server bundle each is for: the controls each renders in one call.
+    /// </summary>
+    static readonly object ServerRendersKey = new();
 
     /// <summary>
     /// The props as the markup declared them, against which <see cref="SaveViewState"/> tells whether code changed
@@ -115,10 +123,38 @@ public class NodeComponent : WebControl, IPostBackEventHandler
     public string? OnClientCommand { get; set; }
 
     /// <summary>
-    /// Whether the component renders on the server, where the application has a <see
-    /// cref="AspNetComponents.ServerBundle"/>. <see langword="true"/> unless set.
+    /// The client's browser entry: an ES module exporting <c>outlet</c> and each component a page may place. A path
+    /// from the application's root, <c>~/</c>, must be there, and is stamped with the file's write time so that a new
+    /// build is not served from a browser's cache; any other URL is used as it is. <c>~/components/client.js</c> unless
+    /// set.
+    /// </summary>
+    public string Script { get; set; } = DefaultScript;
+
+    /// <summary>
+    /// Attributes for the <c>script</c> element that places the component, as HTML: for a site whose filters rewrite
+    /// inline scripts and must be told to leave this one alone. None unless set.
+    /// </summary>
+    public string? ScriptAttributes { get; set; }
+
+    /// <summary>
+    /// The client's server bundle: one self-contained CommonJS file exporting <c>renderOutlets</c>, somewhere nothing
+    /// serves it. A path from the application's root, <c>~/</c>, or an absolute one; empty to render only in the
+    /// browser. <c>~/App_Data/components/server.cjs</c> unless set, where the component renders on the server only if
+    /// the client has a server bundle there; one set otherwise must be there.
+    /// </summary>
+    public string? ServerBundle { get; set; } = DefaultServerBundle;
+
+    /// <summary>
+    /// Whether the component renders on the server, where the client has a server bundle. <see langword="true"/> unless
+    /// set.
     /// </summary>
     public bool ServerRender { get; set; } = true;
+
+    /// <summary>
+    /// How long the page waits for its components to render on the server before it fails; the longest of the controls'
+    /// where several share a render. Ten seconds unless set.
+    /// </summary>
+    public TimeSpan ServerRenderTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
     /// Raised for each command the component raises: posted back from the browser, or, during a server render, there
@@ -210,8 +246,8 @@ public class NodeComponent : WebControl, IPostBackEventHandler
         if (string.IsNullOrEmpty(Component))
             throw new InvalidOperationException($"NodeComponent '{ID}' needs a Component, the name of an export of the client.");
 
-        var script = Url(AspNetComponents.Script ?? throw new InvalidOperationException("No client is configured: set Alethic:Components:Script, or AspNetComponents.Script."))
-            ?? throw new InvalidOperationException($"The client is not built: there is no {AspNetComponents.Script}.");
+        var script = Url(Script)
+            ?? throw new InvalidOperationException($"The client is not built: there is no {Script}.");
 
         // The function each callback raises its command through, in the browser. It answers with a promise of the
         // command's result: resolved when the partial postback the command made comes back, with the result the server
@@ -234,7 +270,7 @@ public class NodeComponent : WebControl, IPostBackEventHandler
 
         var props = new StringBuilder();
         WriteScript(props, Props);
-        var attributes = string.IsNullOrWhiteSpace(AspNetComponents.ScriptAttributes) ? "" : " " + AspNetComponents.ScriptAttributes!.Trim();
+        var attributes = string.IsNullOrWhiteSpace(ScriptAttributes) ? "" : " " + ScriptAttributes!.Trim();
         _outletScript = string.Format(
             "<script{0}>import({1}).then(function (m) {{ var d = {2}; var c = function (n) {{ return function () {{ return d(n, Array.prototype.slice.call(arguments)); }}; }}; m.outlet(m[{3}], document.getElementById({4}), {5}); }});</script>",
             attributes,
@@ -254,32 +290,36 @@ public class NodeComponent : WebControl, IPostBackEventHandler
             scriptManager.RegisterAsyncPostBackControl(this);
         }
 
-        if (ServerRender && AspNetComponents.ServerBundle is not null)
-            Enlist();
+        if (ServerRender && BundleFile() is string bundle)
+            Enlist(bundle);
     }
 
     /// <summary>
-    /// Adds the control to the page's server render, starting one where this is the first.
+    /// Adds the control to the page's server render for its bundle, starting one where this is the first.
     /// </summary>
-    void Enlist()
+    /// <param name="bundle">The server bundle's file.</param>
+    void Enlist(string bundle)
     {
-        if (Context.Items[ServerRenderedKey] is List<NodeComponent> controls)
+        if (Context.Items[ServerRendersKey] is not Dictionary<string, ServerRenderGroup> renders)
+            Context.Items[ServerRendersKey] = renders = new Dictionary<string, ServerRenderGroup>(StringComparer.OrdinalIgnoreCase);
+
+        if (renders.TryGetValue(bundle, out var group))
         {
-            controls.Add(this);
+            group.Add(this);
             return;
         }
 
-        controls = [this];
-        Context.Items[ServerRenderedKey] = controls;
+        renders[bundle] = group = new ServerRenderGroup(NodeModuleSource.FromFile(bundle));
+        group.Add(this);
 
         // On an asynchronous page, an async page task, which the page awaits after PreRender, so that a command may be
         // answered asynchronously. On any other, once PreRender is complete, the request blocking.
         var page = Page;
         var context = Context;
         if (page.IsAsync)
-            page.RegisterAsyncTask(new PageAsyncTask(() => RenderOnServerAsync(page, context, controls)));
+            page.RegisterAsyncTask(new PageAsyncTask(() => RenderOnServerAsync(context, group)));
         else
-            page.PreRenderComplete += (sender, args) => RenderOnServer(page, context, controls);
+            page.PreRenderComplete += (sender, args) => RenderOnServer(context, group);
     }
 
     /// <summary>
@@ -341,44 +381,50 @@ public class NodeComponent : WebControl, IPostBackEventHandler
     /// render as a whole — Node not available here, the render timing out — is thrown from here, and fails the page, as
     /// any page's failure to render does.
     /// </remarks>
-    /// <param name="page">The page.</param>
     /// <param name="context">The page's request.</param>
-    /// <param name="controls">The controls.</param>
-    static async Task RenderOnServerAsync(Page page, HttpContext context, List<NodeComponent> controls)
+    /// <param name="group">The controls whose components the bundle renders.</param>
+    static async Task RenderOnServerAsync(HttpContext context, ServerRenderGroup group)
     {
-        Rendered(controls, await ComponentServerRender.RenderAsync(
+        Rendered(group.Controls, await ComponentServerRender.RenderAsync(
             new NodeRequest(context),
-            AspNetComponents.Pool ?? AspNetNode.Pool,
-            Bundle(page),
-            controls.Select(i => i.Outlet(true)).ToList(),
-            AspNetComponents.ServerRenderTimeout));
+            AspNetNode.Pool,
+            group.Bundle,
+            group.Controls.Select(i => i.Outlet(true)).ToList(),
+            group.Timeout));
     }
 
     /// <summary>
     /// Renders every component on the page that is to render on the server, as <see cref="RenderOnServerAsync"/> does,
     /// for a page that is not asynchronous: a command may only be answered synchronously.
     /// </summary>
-    /// <param name="page">The page.</param>
     /// <param name="context">The page's request.</param>
-    /// <param name="controls">The controls.</param>
-    static void RenderOnServer(Page page, HttpContext context, List<NodeComponent> controls)
+    /// <param name="group">The controls whose components the bundle renders.</param>
+    static void RenderOnServer(HttpContext context, ServerRenderGroup group)
     {
-        Rendered(controls, ComponentServerRender.Render(
+        Rendered(group.Controls, ComponentServerRender.Render(
             new NodeRequest(context),
-            AspNetComponents.Pool ?? AspNetNode.Pool,
-            Bundle(page),
-            controls.Select(i => i.Outlet(false)).ToList(),
-            AspNetComponents.ServerRenderTimeout));
+            AspNetNode.Pool,
+            group.Bundle,
+            group.Controls.Select(i => i.Outlet(false)).ToList(),
+            group.Timeout));
     }
 
     /// <summary>
-    /// The server bundle.
+    /// The server bundle's file, where the component renders on the server: none where <see cref="ServerBundle"/> is
+    /// empty, or is the default and the client has no server bundle there.
     /// </summary>
-    /// <param name="page">The page, to map its path.</param>
-    static NodeModuleSource Bundle(Page page)
+    /// <exception cref="InvalidOperationException">A server bundle set on the control is not there.</exception>
+    string? BundleFile()
     {
-        var path = AspNetComponents.ServerBundle!;
-        return NodeModuleSource.FromFile(path.StartsWith("~/", StringComparison.Ordinal) ? page.Server.MapPath(path) : path);
+        if (string.IsNullOrWhiteSpace(ServerBundle))
+            return null;
+
+        var path = ServerBundle!;
+        var file = path.StartsWith("~/", StringComparison.Ordinal) ? Context.Server.MapPath(path) : path;
+        if (File.Exists(file))
+            return file;
+
+        return path == DefaultServerBundle ? null : throw new InvalidOperationException($"NodeComponent '{ID}': the server bundle is not built: there is no {path}.");
     }
 
     /// <summary>
@@ -503,20 +549,12 @@ public class NodeComponent : WebControl, IPostBackEventHandler
     }
 
     /// <summary>
-    /// Renders the stylesheet, once per page, the element, and, where no <see cref="ScriptManager"/> took it, the
-    /// script that places the component.
+    /// Renders the element, and, where no <see cref="ScriptManager"/> took it, the script that places the component.
     /// </summary>
     /// <param name="writer">The writer to render to.</param>
     /// <exception cref="ComponentRenderException">The component failed to render on the server.</exception>
     protected override void Render(HtmlTextWriter writer)
     {
-        if (Context.Items.Contains(StylesheetRenderedKey) == false)
-        {
-            Context.Items[StylesheetRenderedKey] = true;
-            if (AspNetComponents.Stylesheet is string stylesheet && Url(stylesheet) is string href)
-                writer.Write("<link rel=\"stylesheet\" href=\"" + HttpUtility.HtmlAttributeEncode(href) + "\" />");
-        }
-
         // What the component threw on the server, thrown here, from the control's own render, as any control's failure to
         // render is.
         if (_serverError is not null)
@@ -566,6 +604,41 @@ public class NodeComponent : WebControl, IPostBackEventHandler
             return null;
 
         return ResolveUrl(path) + "?v=" + File.GetLastWriteTimeUtc(file).Ticks;
+    }
+
+    /// <summary>
+    /// The controls on a page whose components one server bundle renders, in one call.
+    /// </summary>
+    /// <param name="bundle">The bundle.</param>
+    sealed class ServerRenderGroup(NodeModuleSource bundle)
+    {
+
+        /// <summary>
+        /// The bundle.
+        /// </summary>
+        public NodeModuleSource Bundle { get; } = bundle;
+
+        /// <summary>
+        /// The controls.
+        /// </summary>
+        public List<NodeComponent> Controls { get; } = [];
+
+        /// <summary>
+        /// How long the render may take: the longest any of the controls allows.
+        /// </summary>
+        public TimeSpan Timeout { get; private set; } = TimeSpan.Zero;
+
+        /// <summary>
+        /// Adds a control.
+        /// </summary>
+        /// <param name="control">The control.</param>
+        public void Add(NodeComponent control)
+        {
+            Controls.Add(control);
+            if (control.ServerRenderTimeout > Timeout)
+                Timeout = control.ServerRenderTimeout;
+        }
+
     }
 
     /// <summary>
