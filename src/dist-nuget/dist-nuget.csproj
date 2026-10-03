@@ -7,7 +7,10 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageProjectReference Include="..\Alethic.AspNetCore.Node\Alethic.AspNetCore.Node.csproj">
+        <PackageProjectReference Include="..\Alethic.Node\Alethic.Node.csproj">
+            <PackageTargetPath>.</PackageTargetPath>
+        </PackageProjectReference>
+        <PackageProjectReference Include="..\Alethic.Node.AspNetCore\Alethic.Node.AspNetCore.csproj">
             <PackageTargetPath>.</PackageTargetPath>
         </PackageProjectReference>
     </ItemGroup>

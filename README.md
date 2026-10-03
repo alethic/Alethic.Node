@@ -1,7 +1,14 @@
-# Alethic.AspNetCore.Node
+# Alethic.Node
 
-Server-side rendering for ASP.NET Core, on a real Node runtime embedded in the process through
-[node-api-dotnet](https://github.com/microsoft/node-api-dotnet). No sidecar process, no HTTP hop.
+A real Node runtime embedded in a .NET process, through [node-api-dotnet](https://github.com/microsoft/node-api-dotnet).
+No sidecar process, no HTTP hop.
+
+**Alethic.Node** is the engines: a pool of libnode runtimes and Node's own modules, for any host, .NET Framework 4.7.2
+included — a console, a service, an ASP.NET Web Forms site. The hosts build on it:
+
+- **Alethic.Node.AspNetCore** — server-side rendering for ASP.NET Core: the request handler and the endpoint mapping.
+  It was published as Alethic.AspNetCore.Node through 0.3; its types moved from that namespace to
+  `Alethic.Node.AspNetCore`, and the engines' to `Alethic.Node`.
 
 The repository previously carried a fork of MintPlayer.AspNetCore.SpaServices, the community
 continuation of Microsoft's SpaServices.Extensions. That model — JSON-RPC into a Node child
@@ -140,7 +147,8 @@ simply has no routes.
 
 ## The pool on its own
 
-The pool works with no web anywhere in sight — a lease is a claim on one engine, and inside
+The pool is Alethic.Node's, and works with no web anywhere in sight — on .NET Framework too, where a
+host without a container constructs it from its options. A lease is a claim on one engine, and inside
 `RunAsync` you are on its thread writing node-api-dotnet:
 
 ```csharp

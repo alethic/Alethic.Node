@@ -20,7 +20,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\src\Alethic.AspNetCore.Node\Alethic.AspNetCore.Node.csproj" />
+        <ProjectReference Include="..\..\src\Alethic.Node.AspNetCore\Alethic.Node.AspNetCore.csproj" />
     </ItemGroup>
 
     <ItemGroup>

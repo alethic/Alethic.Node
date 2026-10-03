@@ -1,0 +1,35 @@
+<Project Sdk="MSTest.Sdk/4.3.3">
+
+    <PropertyGroup>
+        <TargetFrameworks>net472;net8.0;net9.0</TargetFrameworks>
+        <LangVersion>latest</LangVersion>
+        <Nullable>enable</Nullable>
+        <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
+    </PropertyGroup>
+
+    <PropertyGroup Condition=" '$(TargetFramework)' == 'net472' ">
+        <!-- A .NET Framework executable prefers 32 bits, and the libnode the tests carry is 64. The libnode package copies
+             the library under runtimes/win-x64/native itself, where node-api-dotnet looks. -->
+        <PlatformTarget>x64</PlatformTarget>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- As in Alethic.Node.AspNetCore.Tests: declared so a build under MSTest.Sdk 4 carries the VSTest testhost CI's
+             `dotnet test <dll>` runs. -->
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
+    </ItemGroup>
+
+    <ItemGroup Label="One payload runs every system in the matrix, so every native runtime rides along.">
+        <PackageReference Include="Microsoft.JavaScript.LibNode.win-x64" Version="20.1800.203" />
+        <PackageReference Include="Microsoft.JavaScript.LibNode.linux-x64" Version="20.1800.203" />
+        <PackageReference Include="Microsoft.JavaScript.LibNode.linux-arm64" Version="20.1800.203" />
+        <PackageReference Include="Microsoft.JavaScript.LibNode.osx-x64" Version="20.1800.203" />
+        <PackageReference Include="Microsoft.JavaScript.LibNode.osx-arm64" Version="20.1800.203" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Alethic.Node\Alethic.Node.csproj" />
+    </ItemGroup>
+
+</Project>
