@@ -262,3 +262,7 @@ __pycache__/
 
 dist/
 TestResults/
+
+
+# Claude Code settings that are this machine's, not the repository's
+.claude/settings.local.json
