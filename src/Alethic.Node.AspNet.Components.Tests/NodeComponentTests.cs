@@ -104,6 +104,25 @@ public class NodeComponentTests
     }
 
     /// <summary>
+    /// Props bound after the markup's were declared are kept in view state, so a control made again on a postback without
+    /// being bound, as a <c>Repeater</c>'s items are, has them back.
+    /// </summary>
+    [TestMethod]
+    public void Bound_props_take_view_state()
+    {
+        var control = Declared();
+        ((ComponentProp)control.Controls[0]).Value = "Bound";
+        control.DataBind();
+
+        var state = control.Save();
+        Assert.IsNotNull(state);
+
+        var next = Declared();
+        next.Load(state);
+        Assert.AreEqual("Bound", ((ComponentScalar)next.Props["title"]!).Get<string>());
+    }
+
+    /// <summary>
     /// A command raises the control's <see cref="NodeComponent.Command"/>, with its arguments.
     /// </summary>
     [TestMethod]

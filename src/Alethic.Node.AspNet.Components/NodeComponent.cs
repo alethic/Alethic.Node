@@ -175,12 +175,14 @@ public class NodeComponent : WebControl, IPostBackEventHandler
 
     /// <summary>
     /// Binds the control and its props, then builds <see cref="Props"/> from the markup again, since a bound value is
-    /// only there from now. Rebinding resets what code changed, as it does a bound control's values.
+    /// only there from now. Rebinding resets what code changed, as it does a bound control's values. What binding set
+    /// differs from what the markup declared, so it is kept in view state, as a bound property of any control is: a
+    /// control a <c>Repeater</c> makes again on a postback, without binding it, has its bound props back.
     /// </summary>
     public override void DataBind()
     {
         base.DataBind();
-        DeclareProps();
+        Props = ComponentProp.Build(new ComponentObject(), this);
     }
 
     /// <summary>
@@ -272,7 +274,7 @@ public class NodeComponent : WebControl, IPostBackEventHandler
         WriteScript(props, Props);
         var attributes = string.IsNullOrWhiteSpace(ScriptAttributes) ? "" : " " + ScriptAttributes!.Trim();
         _outletScript = string.Format(
-            "<script{0}>import({1}).then(function (m) {{ var d = {2}; var c = function (n) {{ return function () {{ return d(n, Array.prototype.slice.call(arguments)); }}; }}; m.outlet(m[{3}], document.getElementById({4}), {5}); }});</script>",
+            "<script{0}>import({1}).then(function (m) {{ var d = {2}; var c = function (n) {{ var f = function () {{ return d(n, Array.prototype.slice.call(arguments)); }}; Object.defineProperty(f, 'name', {{ value: n }}); return f; }}; m.outlet(m[{3}], document.getElementById({4}), {5}); }});</script>",
             attributes,
             ToScript(script),
             dispatch,
@@ -324,7 +326,7 @@ public class NodeComponent : WebControl, IPostBackEventHandler
 
     /// <summary>
     /// Writes props as a JavaScript literal for the outlet script, each callback a call to its <c>c</c>, which makes
-    /// the function raising the command.
+    /// the function raising the command, named for it, as the server render's are.
     /// </summary>
     /// <param name="script">The script.</param>
     /// <param name="value">The props, or a value in them.</param>

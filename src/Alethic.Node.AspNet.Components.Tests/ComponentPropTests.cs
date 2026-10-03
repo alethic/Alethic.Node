@@ -55,13 +55,15 @@ public class ComponentPropTests
     }
 
     /// <summary>
-    /// Nothing is <c>null</c>, as is a <c>Null</c>.
+    /// Nothing is <c>null</c>, whatever its type, as a bound value is before it is bound.
     /// </summary>
     [TestMethod]
     public void Nothing_is_null()
     {
         Assert.AreEqual("null", Json(new ComponentProp()));
         Assert.AreEqual("null", Json(new ComponentProp() { Type = ComponentPropType.Null }));
+        Assert.AreEqual("null", Json(new ComponentProp() { Type = ComponentPropType.Number }));
+        Assert.AreEqual("null", Json(new ComponentProp() { Type = ComponentPropType.String }));
     }
 
     /// <summary>
@@ -103,7 +105,6 @@ public class ComponentPropTests
         mixed.Controls.Add(new ComponentProp() { Value = "y" });
         StringAssert.Contains(Assert.ThrowsExactly<InvalidOperationException>(() => mixed.ToValue()).Message, "'mixed'");
 
-        Assert.ThrowsExactly<InvalidOperationException>(() => new ComponentProp() { Name = "empty", Type = ComponentPropType.Number }.ToValue());
         Assert.ThrowsExactly<InvalidOperationException>(() => new ComponentProp() { Name = "nan", Value = "NaN", Type = ComponentPropType.Number }.ToValue());
         Assert.ThrowsExactly<InvalidOperationException>(() => new ComponentProp() { Name = "word", Value = "yes", Type = ComponentPropType.Boolean }.ToValue());
         Assert.ThrowsExactly<InvalidOperationException>(() => new ComponentProp() { Name = "text", Value = "x", Type = ComponentPropType.Null }.ToValue());

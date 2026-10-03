@@ -39,7 +39,12 @@ public class ComponentProp : Control
     /// The prop's value: text written in markup, read as <see cref="Type"/>, or anything bound to it, which keeps its
     /// own type unless <see cref="Type"/> asks for another.
     /// </summary>
+    /// <remarks>
+    /// Text in markup reaches it as a string, through <see cref="ComponentPropValueConverter"/>: the page parser makes an
+    /// <see cref="object"/> from text only through a converter. A data-binding expression assigns its value as it is.
+    /// </remarks>
     [Bindable(true)]
+    [TypeConverter(typeof(ComponentPropValueConverter))]
     public object? Value { get; set; }
 
     /// <summary>
@@ -75,28 +80,21 @@ public class ComponentProp : Control
             return array;
         }
 
+        // No value is null, whatever the type: so is a value not yet bound, or bound to nothing.
+        if (Value is null)
+            return new ComponentScalar(null);
+
         switch (Type)
         {
             case ComponentPropType.Auto:
-                return Value switch
-                {
-                    null => new ComponentScalar(null),
-                    string text => text,
-                    _ => ComponentValue.FromObject(Value),
-                };
+                return Value is string written ? written : ComponentValue.FromObject(Value);
 
             case ComponentPropType.String:
-                return Value switch
-                {
-                    null => throw Invalid("needs a Value to be a String"),
-                    string text => text,
-                    _ => Convert.ToString(Value, CultureInfo.InvariantCulture),
-                };
+                return Value as string ?? Convert.ToString(Value, CultureInfo.InvariantCulture);
 
             case ComponentPropType.Number:
                 return Value switch
                 {
-                    null => throw Invalid("needs a Value to be a Number"),
                     string text => Number(text),
                     _ when IsNumeric(Value) => ComponentValue.FromObject(Value),
                     _ => throw Invalid($"is bound to a {Value.GetType().Name}, which is not a Number"),
@@ -105,14 +103,13 @@ public class ComponentProp : Control
             case ComponentPropType.Boolean:
                 return Value switch
                 {
-                    null => throw Invalid("needs a Value to be a Boolean"),
                     bool flag => flag,
                     string text when bool.TryParse(text.Trim(), out var parsed) => parsed,
                     _ => throw Invalid($"has a Value '{Value}' that is not a Boolean"),
                 };
 
             case ComponentPropType.Null:
-                return Value is null ? new ComponentScalar(null) : throw Invalid("declares a Value, which a Null cannot hold");
+                throw Invalid("declares a Value, which a Null cannot hold");
 
             default:
                 throw Invalid($"has no type {Type}");
