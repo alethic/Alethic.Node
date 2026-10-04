@@ -143,9 +143,54 @@ sealed class NodeEngine : IAsyncDisposable
     }
 
     /// <summary>
-    /// The number of leases currently held against this engine.
+    /// The number of leases currently held against this engine. Kept under the pool's lock.
     /// </summary>
     internal int InFlight;
+
+    /// <summary>
+    /// The number of leases the pool may hold against this engine at once. Kept under the pool's lock.
+    /// </summary>
+    internal int Limit;
+
+    /// <summary>
+    /// The most leases held against this engine at once since the pool last adapted its limit. Kept under the pool's
+    /// lock.
+    /// </summary>
+    internal int Peak;
+
+    /// <summary>
+    /// The longest a probe has waited for the engine's thread since the pool last adapted, in milliseconds. Kept under
+    /// the pool's lock.
+    /// </summary>
+    internal double ProbeMax;
+
+    /// <summary>
+    /// When the probe under way was posted, as a <see cref="System.Diagnostics.Stopwatch"/> timestamp; zero while none is.
+    /// Kept under the pool's lock.
+    /// </summary>
+    internal long ProbeStarted;
+
+    /// <summary>
+    /// The engine's event-loop delay as the pool last read it, in milliseconds. Kept under the pool's lock.
+    /// </summary>
+    internal double LoopDelay;
+
+    /// <summary>
+    /// Posts nothing to the engine's thread, and reports when it started there, as a
+    /// <see cref="System.Diagnostics.Stopwatch"/> timestamp.
+    /// </summary>
+    /// <remarks>
+    /// The time from posting to starting is the engine's event-loop delay, as work given to it sees it: what is posted
+    /// waits behind whatever the thread is already busy with, and only that. Taken on the engine's thread, so the trip
+    /// back to the caller is not in it.
+    /// </remarks>
+    internal Task<long> ProbeAsync()
+    {
+        if (disposed)
+            throw new ObjectDisposedException(GetType().Name);
+
+        return runtime.RunAsync(() => Task.FromResult(System.Diagnostics.Stopwatch.GetTimestamp()));
+    }
 
     /// <summary>
     /// The underlying runtime.
