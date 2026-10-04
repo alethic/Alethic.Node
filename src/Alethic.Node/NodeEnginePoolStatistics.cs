@@ -14,11 +14,13 @@ public sealed class NodeEnginePoolStatistics
     /// <param name="engines">Its engines.</param>
     /// <param name="queued">The acquisitions waiting for capacity.</param>
     /// <param name="overloaded">Whether the pool counts itself overloaded.</param>
-    public NodeEnginePoolStatistics(IReadOnlyList<NodeEngineStatistics> engines, int queued, bool overloaded)
+    /// <param name="memoryLoad">The memory load when last read.</param>
+    public NodeEnginePoolStatistics(IReadOnlyList<NodeEngineStatistics> engines, int queued, bool overloaded, double? memoryLoad)
     {
         Engines = engines;
         Queued = queued;
         Overloaded = overloaded;
+        MemoryLoad = memoryLoad;
     }
 
     /// <summary>
@@ -36,5 +38,12 @@ public sealed class NodeEnginePoolStatistics
     /// longer than <see cref="NodeEnginePoolOptions.OverloadInterval"/>.
     /// </summary>
     public bool Overloaded { get; }
+
+    /// <summary>
+    /// The fraction of the memory the process may use that was in use, by everything, when the pool last read it:
+    /// above <see cref="NodeEnginePoolOptions.MemoryLoadLimit"/>, an adaptive pool starts no engine of its own. Nothing
+    /// until the pool, adapting, has read it, or where it cannot be read.
+    /// </summary>
+    public double? MemoryLoad { get; }
 
 }

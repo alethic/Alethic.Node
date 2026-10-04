@@ -33,7 +33,8 @@ public class NodeEnginePoolGrowthTests
     /// the delay target is out of reach, so only the number of engines is learned.
     /// </summary>
     /// <param name="idle">How long an engine holds nothing before it is retired.</param>
-    static NodeEnginePool Pool(TimeSpan idle)
+    /// <param name="memoryLoad">The memory load the pool reads; the machine's where not given.</param>
+    static NodeEnginePool Pool(TimeSpan idle, Func<double?>? memoryLoad = null)
     {
         return new NodeEnginePool(new NodeEnginePoolOptions()
         {
@@ -45,6 +46,7 @@ public class NodeEnginePoolGrowthTests
             TargetEventLoopDelay = TimeSpan.FromSeconds(10),
             EngineIdleTimeout = idle,
             AdaptInterval = Timeout.InfiniteTimeSpan,
+            ReadMemoryLoad = memoryLoad,
         }, NullLoggerFactory.Instance, new NoServices());
     }
 
@@ -108,6 +110,38 @@ public class NodeEnginePoolGrowthTests
 
         // What is left still works.
         Assert.IsTrue(await pool.RunAsync(Busy, exports => Task.FromResult((bool)exports.CallMethod("busy", 1))));
+    }
+
+    /// <summary>
+    /// With memory scarce, no second engine is tried, however many acquisitions wait; once there is room again, it
+    /// is.
+    /// </summary>
+    [TestMethod]
+    public async Task Scarce_memory_stops_the_growth()
+    {
+        var load = 0.95;
+        await using var pool = Pool(idle: TimeSpan.FromMinutes(10), () => load);
+
+        await pool.RunAsync(Busy, exports => Task.FromResult((bool)exports.CallMethod("busy", 1)));
+        await pool.AdaptAsync();
+
+        using var stop = new CancellationTokenSource();
+        var work = LoadAsync(8, () => pool.RunAsync(Busy, exports => Task.FromResult((bool)exports.CallMethod("busy", 20))), stop.Token);
+
+        await Task.Delay(600);
+        await pool.AdaptAsync();
+        await Task.Delay(600);
+        await pool.AdaptAsync();
+        Assert.AreEqual(1, Count(pool), "A second engine was tried with memory scarce.");
+        Assert.AreEqual(0.95, pool.GetStatistics().MemoryLoad);
+
+        load = 0.5;
+        await Task.Delay(600);
+        await pool.AdaptAsync();
+        Assert.AreEqual(2, Count(pool), "No second engine was tried once there was room.");
+
+        stop.Cancel();
+        await work;
     }
 
     /// <summary>

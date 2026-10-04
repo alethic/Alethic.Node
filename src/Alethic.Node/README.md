@@ -66,8 +66,12 @@ services.AddNodeEnginePool(o =>
   throughput has a core and work of its own; one that does not is only another thread contending. Engines idle for
   `EngineIdleTimeout` (thirty seconds) retire down to `MinEngineCount`, and come back the same way they went up, one
   trial at a time: a burst after a quiet spell is served by the engines there are while the pool learns again.
+- **Scarce memory stops the growth.** Every engine is a heap, which the .NET garbage collector neither manages nor
+  sees, so above `MemoryLoadLimit` (0.9 of the memory the process may use, by everything on the machine or in the
+  container) the pool starts no engine of its own, whatever the queue says. It retires none for it.
 
-`GetStatistics()` reports what it has learned: each engine's load, limit and delay, and the acquisitions waiting. It
+`GetStatistics()` reports what it has learned: each engine's load, limit and delay, the acquisitions waiting, and the
+memory load as last read. It
 also reports each engine's heap, in use, committed and its limit, and the memory its objects hold outside it, as of the
 engine's last work. An engine's memory is V8's, managed by V8's own collector; the .NET garbage collector sees none of
 it, so a process's managed heap says nothing about what its engines hold, and this is where to look.
@@ -75,8 +79,8 @@ it, so a process's managed heap says nothing about what its engines hold, and th
 ## Metrics
 
 The same figures are published under the meter `Alethic.Node` (`NodeEnginePool.MeterName`), so a collector such as
-OpenTelemetry (`.AddMeter("Alethic.Node")`) can chart them: gauges for the engines running, the acquisitions waiting and
-whether the pool is overloaded, and for each engine, tagged `engine` with its id, its leases, limit, event-loop delay,
+OpenTelemetry (`.AddMeter("Alethic.Node")`) can chart them: gauges for the engines running, the acquisitions waiting,
+whether the pool is overloaded and the memory load, and for each engine, tagged `engine` with its id, its leases, limit, event-loop delay,
 heap in use, committed and limit, and external memory; counters for leases returned, acquisitions refused by reason
 (`timeout`, `overload`, `cancelled`), and engines started and retired; and a histogram of how long served acquisitions
 waited in line. With no collector listening, none of it costs anything.

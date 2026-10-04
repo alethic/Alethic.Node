@@ -26,6 +26,8 @@ public class NodeEnginePoolOptionsTests
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => options.TargetEventLoopDelay = TimeSpan.Zero);
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => options.EngineIdleTimeout = TimeSpan.Zero);
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => options.AdaptInterval = TimeSpan.Zero);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => options.MemoryLoadLimit = 0);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => options.MemoryLoadLimit = 1.5);
     }
 
     /// <summary>

@@ -82,6 +82,11 @@ public sealed class NodeEnginePool : IAsyncDisposable
     long lastEmpty = Stopwatch.GetTimestamp();
 
     /// <summary>
+    /// The memory load when the pool last adapted. Under the lock.
+    /// </summary>
+    double? memoryLoad;
+
+    /// <summary>
     /// Engines being started, which count against the pool's size before they join it.
     /// </summary>
     int starting;
@@ -315,7 +320,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
                 statistics[i] = new NodeEngineStatistics(engine.Id, engine.InFlight, engine.Limit, engine.LoopDelay, heap.Used, heap.Total, heap.Limit, heap.External);
             }
 
-            return new NodeEnginePoolStatistics(statistics, waiters.Count, Overloaded(Stopwatch.GetTimestamp()));
+            return new NodeEnginePoolStatistics(statistics, waiters.Count, Overloaded(Stopwatch.GetTimestamp()), memoryLoad);
         }
     }
 
@@ -369,10 +374,18 @@ public sealed class NodeEnginePool : IAsyncDisposable
         var start = false;
         NodeEngine? stop = null;
 
+        // Read outside the lock: it asks the system.
+        var load = (options.ReadMemoryLoad ?? MemoryLoad.Read)();
+
         lock (sync)
         {
             if (disposed)
                 return;
+
+            memoryLoad = load;
+
+            // Scarce memory holds the pool at the engines it has: every engine is a heap.
+            var room = load is { } l && l >= options.MemoryLoadLimit ? engines.Count + starting : options.EngineCount;
 
             var window = Milliseconds(windowStarted, now) / 1000;
             windowStarted = now;
@@ -395,7 +408,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
             completed = 0;
             queuedPeak = waiters.Count;
 
-            switch (climber.Next(engines.Count + starting, options.EngineCount, throughput, saturated))
+            switch (climber.Next(engines.Count + starting, room, throughput, saturated))
             {
                 case EngineCountDecision.Grow:
                     logger.LogDebug("Trying another Node engine: {Throughput:0.0} leases a second with {Count}, and acquisitions waiting.", throughput, engines.Count);

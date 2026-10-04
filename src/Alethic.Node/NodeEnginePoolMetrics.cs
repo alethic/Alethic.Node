@@ -43,6 +43,7 @@ sealed class NodeEnginePoolMetrics : IDisposable
         meter.CreateObservableGauge("alethic.node.pool.engines", () => (long)statistics().Engines.Count, "{engine}", "Engines running.");
         meter.CreateObservableGauge("alethic.node.pool.queued", () => (long)statistics().Queued, "{acquisition}", "Acquisitions waiting for capacity.");
         meter.CreateObservableGauge("alethic.node.pool.overloaded", () => statistics().Overloaded ? 1L : 0L, "{overloaded}", "Whether the pool counts itself overloaded.");
+        meter.CreateObservableGauge("alethic.node.pool.memory_load", () => statistics().MemoryLoad ?? 0, "1", "The fraction of the memory the process may use that is in use, by everything, as the pool last read it.");
 
         meter.CreateObservableGauge("alethic.node.engine.leases", () => PerEngine(statistics(), i => (long)i.InFlight), "{lease}", "Leases held against the engine.");
         meter.CreateObservableGauge("alethic.node.engine.limit", () => PerEngine(statistics(), i => (long)i.Limit), "{lease}", "The most leases the engine may hold at once.");

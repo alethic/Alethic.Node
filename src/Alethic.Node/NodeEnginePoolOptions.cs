@@ -15,6 +15,7 @@ public class NodeEnginePoolOptions
     int minConcurrencyPerEngine = 1;
     int maxConcurrencyPerEngine = 4;
     TimeSpan targetEventLoopDelay = TimeSpan.FromMilliseconds(40);
+    double memoryLoadLimit = 0.9;
     TimeSpan adaptInterval = TimeSpan.FromSeconds(1);
 
     /// <summary>
@@ -104,6 +105,28 @@ public class NodeEnginePoolOptions
         get => targetEventLoopDelay;
         set => targetEventLoopDelay = value > TimeSpan.Zero ? value : throw new ArgumentOutOfRangeException(nameof(value), "The target delay must be greater than zero.");
     }
+
+    /// <summary>
+    /// In <see cref="NodeEnginePoolMode.Adaptive"/> mode, the memory load above which the pool starts no engine of its
+    /// own: the fraction of the memory the process may use that is in use, by everything. Defaults to 0.9.
+    /// </summary>
+    /// <remarks>
+    /// Every engine is a heap, which the .NET garbage collector neither manages nor sees, so a pool that grows on its
+    /// own judgment must not grow the process into the limit of its machine or container. The load is what the
+    /// collector itself goes by: the physical memory in use against what is available, the whole machine's or the
+    /// container's, so what else runs there counts too. Above the limit the pool holds at the engines it has; it
+    /// retires none for it.
+    /// </remarks>
+    public double MemoryLoadLimit
+    {
+        get => memoryLoadLimit;
+        set => memoryLoadLimit = value > 0 && value <= 1 ? value : throw new ArgumentOutOfRangeException(nameof(value), "The memory load limit is a fraction from 0 to 1.");
+    }
+
+    /// <summary>
+    /// Reads the memory load, for tests: the machine's, where unset.
+    /// </summary>
+    internal Func<double?>? ReadMemoryLoad { get; set; }
 
     /// <summary>
     /// In <see cref="NodeEnginePoolMode.Adaptive"/> mode, how often the pool reads its engines and adapts its limits.
