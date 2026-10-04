@@ -35,7 +35,8 @@ sealed class NodeEngine : IAsyncDisposable
         "process.on('unhandledRejection', (reason) => {\n" +
         "    console.error('[Alethic.Node] unhandled promise rejection:', reason);\n" +
         "});\n" +
-        TrackTimersScript;
+        TrackTimersScript +
+        HeapScript;
 
     /// <summary>
     /// Keeps hold of the timers an application schedules, so they can be let go of on the way out.
@@ -88,6 +89,26 @@ sealed class NodeEngine : IAsyncDisposable
             };
         })();
         """;
+
+    /// <summary>
+    /// Reads the engine's heap, for the pool's statistics.
+    /// </summary>
+    /// <remarks>
+    /// V8's own figures, in bytes: the heap in use, the heap committed, the most the heap may grow to, and the memory
+    /// outside the heap that JavaScript objects hold, such as buffers. The .NET garbage collector sees none of it: an
+    /// engine's memory is V8's, managed by V8's collector, and this is the only account of it.
+    /// </remarks>
+    const string HeapScript = """
+        globalThis.__alethicHeap = function () {
+            const s = require('v8').getHeapStatistics();
+            return [s.used_heap_size, s.total_heap_size, s.heap_size_limit, s.external_memory ?? 0];
+        };
+        """;
+
+    /// <summary>
+    /// How much of the engine's time passes between readings of its heap.
+    /// </summary>
+    static readonly long HeapSampleInterval = System.Diagnostics.Stopwatch.Frequency / 4;
 
     /// <summary>
     /// Unreferences every handle the runtime still holds.
@@ -200,6 +221,64 @@ sealed class NodeEngine : IAsyncDisposable
     long windowStarted = System.Diagnostics.Stopwatch.GetTimestamp();
 
     /// <summary>
+    /// The engine's heap as last read, in bytes: in use, committed, its limit, and the memory outside it. Under
+    /// <see cref="stamps"/>.
+    /// </summary>
+    long heapUsed, heapTotal, heapLimit, externalMemory;
+
+    /// <summary>
+    /// When the heap was last read, as a <see cref="System.Diagnostics.Stopwatch"/> timestamp; zero while it never was.
+    /// Under <see cref="stamps"/>.
+    /// </summary>
+    long heapSampled;
+
+    /// <summary>
+    /// The engine's heap as of its last work, in bytes: in use, committed, its limit, and the memory outside it that its
+    /// objects hold. Zero until it has worked.
+    /// </summary>
+    /// <remarks>
+    /// Read on the engine's own thread as work starts there, at most every quarter second of its time, rather than
+    /// asked for: a reading posted to a saturated engine would wait behind the saturation it was meant to show.
+    /// </remarks>
+    internal (long Used, long Total, long Limit, long External) Heap
+    {
+        get
+        {
+            lock (stamps)
+                return (heapUsed, heapTotal, heapLimit, externalMemory);
+        }
+    }
+
+    /// <summary>
+    /// Reads the heap, where it has not been read lately. On the engine's thread.
+    /// </summary>
+    /// <param name="now">The time, as a <see cref="System.Diagnostics.Stopwatch"/> timestamp.</param>
+    void SampleHeap(long now)
+    {
+        lock (stamps)
+        {
+            if (heapSampled != 0 && now - heapSampled < HeapSampleInterval)
+                return;
+
+            heapSampled = now;
+        }
+
+        var figures = JSValue.Global["__alethicHeap"].Call();
+        var used = (long)(double)figures[0];
+        var total = (long)(double)figures[1];
+        var limit = (long)(double)figures[2];
+        var external = (long)(double)figures[3];
+
+        lock (stamps)
+        {
+            heapUsed = used;
+            heapTotal = total;
+            heapLimit = limit;
+            externalMemory = external;
+        }
+    }
+
+    /// <summary>
     /// The engine's event-loop delay over the window just ended, in milliseconds, and the start of the next.
     /// </summary>
     /// <remarks>
@@ -234,7 +313,7 @@ sealed class NodeEngine : IAsyncDisposable
     }
 
     /// <summary>
-    /// Stamps work as started on the engine's thread, and records what it waited.
+    /// Stamps work as started on the engine's thread, records what it waited, and reads the heap now and then.
     /// </summary>
     /// <param name="posted">Its stamp from <see cref="Posted"/>.</param>
     void Started(LinkedListNode<long> posted)
@@ -248,6 +327,8 @@ sealed class NodeEngine : IAsyncDisposable
 
             waitMax = Math.Max(waitMax, Milliseconds(Math.Max(posted.Value, windowStarted), now));
         }
+
+        SampleHeap(now);
     }
 
     /// <summary>

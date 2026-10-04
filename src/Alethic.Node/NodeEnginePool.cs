@@ -281,12 +281,23 @@ public sealed class NodeEnginePool : IAsyncDisposable
     }
 
     /// <summary>
-    /// The pool as it stands: each engine's limit and load, and the acquisitions waiting.
+    /// The pool as it stands: each engine's limit, load, delay and heap, and the acquisitions waiting. Answered at once,
+    /// from what the pool and its engines have recorded, without asking any engine's thread.
     /// </summary>
     public NodeEnginePoolStatistics GetStatistics()
     {
         lock (sync)
-            return new NodeEnginePoolStatistics(engines.Select(i => new NodeEngineStatistics(i.InFlight, i.Limit, i.LoopDelay)).ToArray(), waiters.Count, Overloaded(Stopwatch.GetTimestamp()));
+        {
+            var statistics = new NodeEngineStatistics[engines.Count];
+            for (var i = 0; i < engines.Count; i++)
+            {
+                var engine = engines[i];
+                var heap = engine.Heap;
+                statistics[i] = new NodeEngineStatistics(engine.InFlight, engine.Limit, engine.LoopDelay, heap.Used, heap.Total, heap.Limit, heap.External);
+            }
+
+            return new NodeEnginePoolStatistics(statistics, waiters.Count, Overloaded(Stopwatch.GetTimestamp()));
+        }
     }
 
     /// <summary>

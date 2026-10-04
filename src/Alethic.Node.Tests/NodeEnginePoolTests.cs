@@ -331,6 +331,37 @@ public class NodeEnginePoolTests
     }
 
     /// <summary>
+    /// An engine's heap is reported as of its last work: what a module keeps is seen in it, and what it holds outside
+    /// the heap is seen apart.
+    /// </summary>
+    [TestMethod]
+    public async Task An_engine_reports_its_heap()
+    {
+        await using var services = BuildServices();
+        var pool = services.GetRequiredService<NodeEnginePool>();
+        var module = TestModules.FromText("memory.cjs", """
+            let kept = null, buffer = null;
+            module.exports.keep = () => { kept = Array.from({ length: 400000 }, (_, i) => ({ i })); buffer = Buffer.alloc(32 * 1024 * 1024); return true; };
+            module.exports.drop = () => { kept = null; buffer = null; return true; };
+            """);
+
+        // Before: a sample from the engine's first work.
+        await pool.RunAsync(module, exports => Task.FromResult((bool)exports.CallMethod("drop")));
+        var before = pool.GetStatistics().Engines.Single();
+        Assert.IsTrue(before.HeapUsed > 0 && before.HeapTotal >= before.HeapUsed && before.HeapLimit > before.HeapTotal, $"The heap read {before.HeapUsed} of {before.HeapTotal}, limit {before.HeapLimit}.");
+
+        // After: the next sample comes with work a quarter second on.
+        await pool.RunAsync(module, exports => Task.FromResult((bool)exports.CallMethod("keep")));
+        await Task.Delay(300);
+        await pool.RunAsync(() => Task.FromResult(true));
+        var after = pool.GetStatistics().Engines.Single();
+
+        Assert.IsTrue(after.HeapUsed > before.HeapUsed + 8 * 1024 * 1024, $"The heap in use went from {before.HeapUsed} to {after.HeapUsed}.");
+        // Near the buffer's 32 MiB: whatever else was outside the heap may have gone meanwhile.
+        Assert.IsTrue(after.ExternalMemory >= before.ExternalMemory + 30 * 1024 * 1024, $"The external memory went from {before.ExternalMemory} to {after.ExternalMemory}.");
+    }
+
+    /// <summary>
     /// The leases an engine is configured and warmed on are outside its capacity, and give back none they did not take.
     /// </summary>
     [TestMethod]

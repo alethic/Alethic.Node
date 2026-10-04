@@ -67,7 +67,10 @@ services.AddNodeEnginePool(o =>
   `EngineIdleTimeout` (thirty seconds) retire down to `MinEngineCount`, and come back the same way they went up, one
   trial at a time: a burst after a quiet spell is served by the engines there are while the pool learns again.
 
-`GetStatistics()` reports what it has learned: each engine's load, limit and delay, and the acquisitions waiting.
+`GetStatistics()` reports what it has learned: each engine's load, limit and delay, and the acquisitions waiting. It
+also reports each engine's heap, in use, committed and its limit, and the memory its objects hold outside it, as of the
+engine's last work. An engine's memory is V8's, managed by V8's own collector; the .NET garbage collector sees none of
+it, so a process's managed heap says nothing about what its engines hold, and this is where to look.
 
 ## Overload
 
