@@ -114,29 +114,42 @@ public class NodeEnginePoolGrowthTests
     /// Where the work is held up outside the engines, a second engine does no more of it, and goes again after its
     /// trial; leases on it are allowed to finish.
     /// </summary>
+    /// <remarks>
+    /// The dependency lets through exactly as many calls a window as the test gives it permits for, and every window is
+    /// the same length, so the throughput with two engines is the throughput with one to within the windows' lengths,
+    /// whatever the machine: no engine could do more, and the climber must see that.
+    /// </remarks>
     [TestMethod]
     public async Task A_second_engine_that_does_not_pay_goes_again()
     {
         await using var pool = Pool(idle: TimeSpan.FromMinutes(10));
 
-        // One call every 25 ms, however many wait for it: a dependency with a capacity of its own, which more callers
-        // cannot get more out of.
-        var sync = new object();
-        var next = Stopwatch.GetTimestamp();
-        var every = Stopwatch.Frequency / 40;
+        // A dependency with a capacity of its own, which more engines cannot get more out of.
+        using var dependency = new SemaphoreSlim(0);
+        var completed = 0;
 
         async Task<bool> Call()
         {
-            long wait;
-            lock (sync)
-            {
-                var now = Stopwatch.GetTimestamp();
-                next = Math.Max(now, next) + every;
-                wait = next - now;
-            }
-
-            await Task.Delay(TimeSpan.FromSeconds(wait / (double)Stopwatch.Frequency));
+            await dependency.WaitAsync();
+            Interlocked.Increment(ref completed);
             return true;
+        }
+
+        // One window of exactly the given calls, the same length as every other.
+        async Task WindowAsync(int calls)
+        {
+            var began = Stopwatch.GetTimestamp();
+            var before = Volatile.Read(ref completed);
+            dependency.Release(calls);
+
+            while (Volatile.Read(ref completed) < before + calls)
+                await Task.Delay(10);
+
+            var left = TimeSpan.FromMilliseconds(500) - TimeSpan.FromSeconds((Stopwatch.GetTimestamp() - began) / (double)Stopwatch.Frequency);
+            if (left > TimeSpan.Zero)
+                await Task.Delay(left);
+
+            await pool.AdaptAsync();
         }
 
         await pool.RunAsync(() => Task.FromResult(true));
@@ -145,17 +158,19 @@ public class NodeEnginePoolGrowthTests
         using var stop = new CancellationTokenSource();
         var load = LoadAsync(8, () => pool.RunAsync(Call), stop.Token);
 
-        await Task.Delay(600);
-        await pool.AdaptAsync();
+        // The baseline, with acquisitions waiting behind the leases held up at the dependency.
+        await WindowAsync(24);
         Assert.AreEqual(2, Count(pool), "No second engine was tried.");
 
-        await Task.Delay(600);
-        await pool.AdaptAsync();
-        await Task.Delay(600);
-        await pool.AdaptAsync();
+        // The trial: the same throughput, however many engines.
+        await WindowAsync(24);
+        await WindowAsync(24);
         Assert.AreEqual(1, Count(pool), "The second engine was kept though it did no more.");
 
+        // What the retired engine held finishes, and what is left still works.
+        await WindowAsync(24);
         stop.Cancel();
+        dependency.Release(8);
         await load;
     }
 

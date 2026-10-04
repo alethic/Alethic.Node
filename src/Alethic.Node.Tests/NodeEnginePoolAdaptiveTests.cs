@@ -152,8 +152,10 @@ public class NodeEnginePoolAdaptiveTests
         await Task.WhenAll(busy, behind);
 
         await pool.AdaptAsync();
+        // Posted some time into the busy work, however long the posting took on the machine at hand, and waited the
+        // rest of it: well over any wait an idle engine would show, and no more than the busy work.
         var delay = pool.GetStatistics().Engines.Single().LoopDelay;
-        Assert.IsTrue(delay is >= 150 and <= 400, $"The lease behind the busy one waited {delay} ms.");
+        Assert.IsTrue(delay is >= 50 and <= 400, $"The lease behind the busy one waited {delay} ms.");
 
         await Task.Delay(100);
         await pool.AdaptAsync();
