@@ -29,6 +29,7 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Sample.Console/Sample.Console.csproj" />
+    <Project Path="samples/Sample.Load/Sample.Load.csproj" />
     <Project Path="samples/Sample.Client/Sample.Client.esproj">
       <Build />
       <Deploy />
