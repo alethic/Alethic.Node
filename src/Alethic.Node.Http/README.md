@@ -1,36 +1,23 @@
 # Alethic.Node.Http
 
-Serving a JavaScript application over HTTP from Node embedded in a .NET process, whatever the .NET host. It holds the
-protocol the hosts share, so an application written for one is served unchanged by the other:
+The protocol by which a JavaScript application's `fetch` handler is served from .NET, shared by
+[Alethic.Node.AspNetCore](https://www.nuget.org/packages/Alethic.Node.AspNetCore) and
+[Alethic.Node.AspNet](https://www.nuget.org/packages/Alethic.Node.AspNet), so one application is served by either.
+Referenced through them; documented here because it is what the application sees.
 
-- **Alethic.Node.AspNetCore** serves it from ASP.NET Core endpoints;
-- **Alethic.Node.AspNet** serves it from System.Web routes on .NET Framework.
-
-An application is a self-contained CommonJS bundle whose default export has a `fetch` function, or is the function
-itself:
+The application is a CommonJS bundle whose default export has a `fetch` function, or is one:
 
 ```js
 export default {
-    fetch(request, env, ctx) { /* return a Response, or a promise of one */ },
+    fetch(request, env, ctx) { /* return a Response */ },
 };
 ```
 
-`FetchProtocol` is how a host puts a request to it and reads its answer:
+- `request`: a `Request` at `BaseUri` (`http://node.invalid/`) plus the path below the mount. The visitor's address
+  is in `X-Forwarded-Proto`, `X-Forwarded-Host` and `X-Forwarded-Prefix`, written by the host.
+- `env`: the strings in `Environment`, new per request.
+- `ctx`: `waitUntil(promise)` and `passThroughOnException()`.
+- The `Response`'s status, headers and body become the host's, less `Content-Length` and `Transfer-Encoding`.
 
-- **The request** is the runtime's own `Request`. Its URL is the path below where the host mounted the application,
-  under `BaseUri`, which is `http://node.invalid/` unless set: not where the caller was. The host drops `Host` and
-  writes `X-Forwarded-Proto`, `X-Forwarded-Host` and, below the root, `X-Forwarded-Prefix` itself, so they say where
-  the caller was and a caller cannot say otherwise.
-- **`env`** holds the host's strings, from `Environment`, in an object made for each request.
-- **`ctx`** has `waitUntil(promise)`, which only keeps a rejection from going unobserved, since a pooled engine keeps
-  running, and `passThroughOnException()`, which does nothing.
-- **The response's** status, headers and body are the host's to write, less `Content-Length` and `Transfer-Encoding`,
-  which the server frames itself.
-
-`FetchProtocolOptions` holds what every host is configured with: `BaseUri`, `Environment`, and `ResponseBody`, a
-`BodyMode`:
-- **`Streamed`**: each chunk reaches the client as the application produces it. A failure after the first can only
-  truncate the response.
-- **`Buffered`**: nothing is written until the application is done, so a failure is still one the host answers.
-
-Each host's options extend it with what is its own.
+`ResponseBody` is `Streamed`, each chunk sent as produced, or `Buffered`, nothing sent until done, so a failure
+partway through can still be answered.

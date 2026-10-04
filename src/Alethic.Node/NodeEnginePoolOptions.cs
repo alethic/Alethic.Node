@@ -114,10 +114,11 @@ public class NodeEnginePoolOptions
     /// Every engine is a heap, which the .NET garbage collector neither manages nor sees, so a pool that grows on its
     /// own judgment must not grow the process into the limit of its machine or container. The load is what the
     /// collector itself goes by: the physical memory in use against what is available, the whole machine's or the
-    /// container's, so what else runs there counts too, and on some systems so do the file pages cached in memory,
-    /// which read as use though they would be given up on demand. The collector lives with that imprecision, and so
-    /// does this: above the limit the pool holds at the engines it has, and a reading that is high for the wrong
-    /// reason costs it growth, never an engine. It retires none for it.
+    /// container's. On .NET Framework, which has no such figure, it is what Windows or Linux says, and on any other
+    /// system nothing, which is no brake. What else runs there counts too, and on some systems so do the file pages
+    /// cached in memory, which read as use though they would be given up on demand. The collector lives with that
+    /// imprecision, and so does this: above the limit the pool holds at the engines it has, and a reading that is high
+    /// for the wrong reason costs it growth, never an engine. It retires none for it.
     /// </remarks>
     public double MemoryLoadLimit
     {

@@ -114,6 +114,50 @@ public class NodeEnginePoolGrowthTests
     }
 
     /// <summary>
+    /// A new engine starts at the limit the others have learned, not at the most: started under saturation, one at the
+    /// most would take every waiting acquisition at once and run late until its limit had fallen to where the others'
+    /// already were.
+    /// </summary>
+    [TestMethod]
+    public async Task A_new_engine_starts_at_the_others_limit()
+    {
+        await using var pool = new NodeEnginePool(new NodeEnginePoolOptions()
+        {
+            Mode = NodeEnginePoolMode.Adaptive,
+            MinEngineCount = 1,
+            EngineCount = 2,
+            MinConcurrencyPerEngine = 1,
+            MaxConcurrencyPerEngine = 32,
+            AdaptInterval = Timeout.InfiniteTimeSpan,
+            ReadMemoryLoad = () => 0.5,
+        }, NullLoggerFactory.Instance, new NoServices());
+
+        await pool.RunAsync(Busy, exports => Task.FromResult((bool)exports.CallMethod("busy", 1)));
+        await pool.AdaptAsync();
+
+        // Busy work brings the first engine's limit down, over a few windows, and leaves acquisitions waiting.
+        using var stop = new CancellationTokenSource();
+        var load = LoadAsync(40, () => pool.RunAsync(Busy, exports => Task.FromResult((bool)exports.CallMethod("busy", 30))), stop.Token);
+
+        for (var i = 0; i < 3; i++)
+        {
+            await Task.Delay(500);
+            await pool.AdaptAsync();
+        }
+
+        var statistics = pool.GetStatistics();
+        var first = statistics.Engines.Single(e => e.Id == statistics.Engines.Min(i => i.Id));
+        Assert.IsTrue(first.Limit < 32, $"The first engine's limit stayed at {first.Limit}.");
+        Assert.AreEqual(2, statistics.Engines.Count, "No second engine was tried.");
+
+        var second = statistics.Engines.Single(e => e.Id != first.Id);
+        Assert.IsTrue(second.Limit <= first.Limit * 2 + 1 && second.Limit < 32, $"The second engine started at {second.Limit} where the first's limit was {first.Limit}.");
+
+        stop.Cancel();
+        await load;
+    }
+
+    /// <summary>
     /// With memory scarce, no second engine is tried, however many acquisitions wait; once there is room again, it
     /// is.
     /// </summary>

@@ -490,7 +490,9 @@ sealed class NodeEngine : IAsyncDisposable
     async Task<string> ResolveAsync(NodeModuleSource source, CancellationToken cancellationToken)
     {
         var path = await source.ResolveAsync(cancellationToken);
-        logger.LogDebug("Requiring module {Module} from {Path}.", source.Name, path);
+
+        // Once per call, so at the level nobody turns on for anything but this: Debug is for what the pool decides.
+        logger.LogTrace("Requiring module {Module} from {Path}.", source.Name, path);
 
         return path;
     }
