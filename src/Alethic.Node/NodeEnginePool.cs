@@ -69,8 +69,8 @@ public sealed class NodeEnginePool : IAsyncDisposable
     int starting;
 
     /// <summary>
-    /// When the pool last adapted, which began the window probes are counted in, as a <see cref="Stopwatch"/>
-    /// timestamp. Under the lock.
+    /// When the pool last adapted, which began the window the leases completed are counted in, as a
+    /// <see cref="Stopwatch"/> timestamp. Under the lock.
     /// </summary>
     long windowStarted = Stopwatch.GetTimestamp();
 
@@ -240,7 +240,8 @@ public sealed class NodeEnginePool : IAsyncDisposable
     }
 
     /// <summary>
-    /// Brings the pool to its configured size, running the given warmup against each engine.
+    /// Brings the pool to its size, running the given warmup against each engine: <see cref="NodeEnginePoolOptions.EngineCount"/>
+    /// engines, or, adapting, <see cref="NodeEnginePoolOptions.MinEngineCount"/>, the rest being the pool's to learn.
     /// </summary>
     /// <remarks>
     /// Standing engines up and evaluating modules both stall the engine they run on, so doing it
@@ -319,7 +320,8 @@ public sealed class NodeEnginePool : IAsyncDisposable
 
     /// <summary>
     /// Reads every engine's event-loop delay, and sets each engine's limit from it. What the pool does by itself every
-    /// <see cref="NodeEnginePoolOptions.AdaptInterval"/> in <see cref="NodeEnginePoolMode.Adaptive"/> mode.
+    /// <see cref="NodeEnginePoolOptions.AdaptInterval"/> in <see cref="NodeEnginePoolMode.Adaptive"/> mode; in any other,
+    /// nothing.
     /// </summary>
     /// <remarks>
     /// An engine's delay over the window is how long the work posted to it waited before its thread ran it, measured
@@ -328,12 +330,18 @@ public sealed class NodeEnginePool : IAsyncDisposable
     /// <param name="cancellationToken">Abandons the reading.</param>
     internal async Task AdaptAsync(CancellationToken cancellationToken = default)
     {
+        if (options.Mode != NodeEnginePoolMode.Adaptive)
+            return;
+
         var now = Stopwatch.GetTimestamp();
         var start = false;
         NodeEngine? stop = null;
 
         lock (sync)
         {
+            if (disposed)
+                return;
+
             var window = Milliseconds(windowStarted, now) / 1000;
             windowStarted = now;
 

@@ -57,6 +57,35 @@ public class EngineCountClimberTests
     }
 
     /// <summary>
+    /// A trial is judged whatever the line looks like meanwhile: acquisitions no longer waiting is not what keeps an
+    /// engine, its throughput is.
+    /// </summary>
+    [TestMethod]
+    public void A_trial_is_judged_by_throughput_alone()
+    {
+        var climber = new EngineCountClimber(trialWindows: 2, cooldownWindows: 3, minimumGain: 0.1);
+        climber.Next(count: 1, max: 4, throughput: 100, saturated: true);
+
+        Assert.AreEqual(EngineCountDecision.Hold, climber.Next(count: 2, max: 4, throughput: 100, saturated: false));
+        Assert.AreEqual(EngineCountDecision.Shrink, climber.Next(count: 2, max: 4, throughput: 100, saturated: false));
+    }
+
+    /// <summary>
+    /// An engine that pays, with nothing waiting afterwards, is kept, and nothing more is tried.
+    /// </summary>
+    [TestMethod]
+    public void An_engine_that_pays_with_nothing_waiting_is_kept_and_no_more_tried()
+    {
+        var climber = new EngineCountClimber(trialWindows: 2, cooldownWindows: 3, minimumGain: 0.1);
+        climber.Next(count: 1, max: 4, throughput: 100, saturated: true);
+        climber.Next(count: 2, max: 4, throughput: 150, saturated: true);
+
+        Assert.AreEqual(EngineCountDecision.Hold, climber.Next(count: 2, max: 4, throughput: 190, saturated: false));
+        Assert.IsFalse(climber.OnTrial);
+        Assert.AreEqual(EngineCountDecision.Hold, climber.Next(count: 2, max: 4, throughput: 190, saturated: false));
+    }
+
+    /// <summary>
     /// An engine that did not raise throughput enough goes again, and none is tried until the cooldown has passed.
     /// </summary>
     [TestMethod]

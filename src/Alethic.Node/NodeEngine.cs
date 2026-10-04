@@ -243,9 +243,26 @@ sealed class NodeEngine : IAsyncDisposable
 
         lock (stamps)
         {
-            waiting.Remove(posted);
+            if (posted.List == waiting)
+                waiting.Remove(posted);
+
             waitMax = Math.Max(waitMax, Milliseconds(Math.Max(posted.Value, windowStarted), now));
         }
+    }
+
+    /// <summary>
+    /// Takes back the stamp of work the runtime refused, so that it is not counted as waiting.
+    /// </summary>
+    /// <remarks>
+    /// Work the runtime took but never starts, which only a runtime being torn down does, keeps its stamp: the engine is
+    /// going, and nothing reads it again.
+    /// </remarks>
+    /// <param name="posted">Its stamp from <see cref="Posted"/>.</param>
+    void Unposted(LinkedListNode<long> posted)
+    {
+        lock (stamps)
+            if (posted.List == waiting)
+                waiting.Remove(posted);
     }
 
     /// <summary>
@@ -271,11 +288,19 @@ sealed class NodeEngine : IAsyncDisposable
             throw new ObjectDisposedException(GetType().Name);
 
         var posted = Posted();
-        return runtime.RunAsync(() =>
+        try
         {
-            Started(posted);
-            return work();
-        });
+            return runtime.RunAsync(() =>
+            {
+                Started(posted);
+                return work();
+            });
+        }
+        catch
+        {
+            Unposted(posted);
+            throw;
+        }
     }
 
     /// <summary>
@@ -291,11 +316,19 @@ sealed class NodeEngine : IAsyncDisposable
             throw new ObjectDisposedException(GetType().Name);
 
         var posted = Posted();
-        return runtime.Run(() =>
+        try
         {
-            Started(posted);
-            return work();
-        });
+            return runtime.Run(() =>
+            {
+                Started(posted);
+                return work();
+            });
+        }
+        catch
+        {
+            Unposted(posted);
+            throw;
+        }
     }
 
     /// <summary>

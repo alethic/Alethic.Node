@@ -284,6 +284,53 @@ public class NodeEnginePoolTests
     }
 
     /// <summary>
+    /// A waiting acquisition cancelled leaves the line, and the next in line is not held up by it.
+    /// </summary>
+    [TestMethod]
+    public async Task A_cancelled_acquisition_leaves_the_line()
+    {
+        await using var services = BuildServices(o => o.MaxConcurrencyPerEngine = 1);
+        var pool = services.GetRequiredService<NodeEnginePool>();
+
+        await using var held = await pool.AcquireAsync();
+
+        using var cancellation = new CancellationTokenSource();
+        var cancelled = pool.AcquireAsync(cancellation.Token);
+        var next = pool.AcquireAsync();
+        Assert.AreEqual(2, pool.GetStatistics().Queued);
+
+        cancellation.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => cancelled);
+        Assert.AreEqual(1, pool.GetStatistics().Queued);
+
+        await held.DisposeAsync();
+        await using var served = await next;
+        Assert.AreEqual(0, pool.GetStatistics().Queued);
+    }
+
+    /// <summary>
+    /// Disposing the pool fails the acquisitions waiting on it, and refuses any after.
+    /// </summary>
+    [TestMethod]
+    public async Task Disposing_the_pool_fails_what_waits_and_refuses_what_follows()
+    {
+        var services = BuildServices(o => o.MaxConcurrencyPerEngine = 1);
+        var pool = services.GetRequiredService<NodeEnginePool>();
+
+        var held = await pool.AcquireAsync();
+        var waiting = pool.AcquireAsync();
+        Assert.IsFalse(waiting.IsCompleted);
+
+        await services.DisposeAsync();
+
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => waiting);
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => pool.AcquireAsync());
+
+        // Returning the lease to a disposed pool is harmless.
+        await held.DisposeAsync();
+    }
+
+    /// <summary>
     /// The leases an engine is configured and warmed on are outside its capacity, and give back none they did not take.
     /// </summary>
     [TestMethod]

@@ -66,6 +66,25 @@ public class AdaptiveConcurrencyTests
     }
 
     /// <summary>
+    /// At the target exactly, the engine is keeping up: a reached limit rises.
+    /// </summary>
+    [TestMethod]
+    public void At_the_target_a_reached_limit_rises()
+    {
+        Assert.AreEqual(6, AdaptiveConcurrency.Next(4, delay: 40, peak: 4, min: 1, max: 32, target: 40));
+    }
+
+    /// <summary>
+    /// The least limit is one, and from one the limit still rises by one.
+    /// </summary>
+    [TestMethod]
+    public void From_one_the_limit_rises_by_one()
+    {
+        Assert.AreEqual(1, AdaptiveConcurrency.Next(1, delay: 1000, peak: 1, min: 1, max: 32, target: 40));
+        Assert.AreEqual(2, AdaptiveConcurrency.Next(1, delay: 1, peak: 1, min: 1, max: 32, target: 40));
+    }
+
+    /// <summary>
     /// Under the target, a limit nothing reached stays where it is: it says nothing about whether more would be
     /// welcome.
     /// </summary>

@@ -64,7 +64,8 @@ services.AddNodeEnginePool(o =>
 - **The number of engines is found by hill climbing:** where acquisitions waited for capacity, the pool tries one more
   engine, keeps it if the leases it completes a second rose by a tenth, and retires it otherwise. An engine that adds
   throughput has a core and work of its own; one that does not is only another thread contending. Engines idle for
-  `EngineIdleTimeout` (thirty seconds) retire down to `MinEngineCount`.
+  `EngineIdleTimeout` (thirty seconds) retire down to `MinEngineCount`, and come back the same way they went up, one
+  trial at a time: a burst after a quiet spell is served by the engines there are while the pool learns again.
 
 `GetStatistics()` reports what it has learned: each engine's load, limit and delay, and the acquisitions waiting.
 

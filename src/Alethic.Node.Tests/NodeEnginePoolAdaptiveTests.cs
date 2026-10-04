@@ -161,16 +161,68 @@ public class NodeEnginePoolAdaptiveTests
     }
 
     /// <summary>
-    /// A fixed pool reads nothing and keeps its limit.
+    /// A fixed pool keeps its limit, whatever its engine's delay, and adapts nothing when asked to.
     /// </summary>
     [TestMethod]
     public async Task A_fixed_pool_keeps_its_limit()
     {
-        await using var pool = new NodeEnginePool(new NodeEnginePoolOptions() { MaxConcurrencyPerEngine = 3 }, NullLoggerFactory.Instance, new NoServices());
+        await using var pool = new NodeEnginePool(new NodeEnginePoolOptions() { MaxConcurrencyPerEngine = 3, TargetEventLoopDelay = TimeSpan.FromMilliseconds(1) }, NullLoggerFactory.Instance, new NoServices());
 
         await pool.RunAsync(Work, exports => Task.FromResult((bool)exports.CallMethod("busy", 1)));
+        var busy = pool.RunAsync(Work, exports => Task.FromResult((bool)exports.CallMethod("busy", 100)));
+        await Task.Delay(20);
+        await pool.RunAsync(Work, exports => Task.FromResult((bool)exports.CallMethod("busy", 1)));
+        await busy;
+
+        await pool.AdaptAsync();
         Assert.AreEqual(3, Limit(pool));
         Assert.AreEqual(0, pool.GetStatistics().Engines.Single().LoopDelay);
+    }
+
+    /// <summary>
+    /// Work still waiting when the window closes counts for what it has waited so far, and only the rest of its wait
+    /// counts in the next window: an engine stuck for a whole window shows up in it.
+    /// </summary>
+    [TestMethod]
+    public async Task Work_still_waiting_counts_in_the_window_it_waited_in()
+    {
+        await using var pool = Pool(max: 2);
+
+        await pool.RunAsync(Work, exports => Task.FromResult((bool)exports.CallMethod("busy", 1)));
+        await pool.AdaptAsync();
+
+        var busy = pool.RunAsync(Work, exports => Task.FromResult((bool)exports.CallMethod("busy", 500)));
+        await Task.Delay(50);
+        var behind = pool.RunAsync(Work, exports => Task.FromResult((bool)exports.CallMethod("busy", 1)));
+
+        // The window closes with the busy work under way and the other still waiting behind it.
+        await Task.Delay(200);
+        await pool.AdaptAsync();
+        var soFar = pool.GetStatistics().Engines.Single().LoopDelay;
+        Assert.IsTrue(soFar is >= 100 and <= 400, $"The work still waiting counted {soFar} ms.");
+
+        await Task.WhenAll(busy, behind);
+        await pool.AdaptAsync();
+        var rest = pool.GetStatistics().Engines.Single().LoopDelay;
+        Assert.IsTrue(rest is >= 100 and <= 450, $"The rest of the wait counted {rest} ms.");
+    }
+
+    /// <summary>
+    /// An adaptive pool prepares its fewest engines, not its most: the rest are its to learn.
+    /// </summary>
+    [TestMethod]
+    public async Task An_adaptive_pool_prepares_its_fewest_engines()
+    {
+        await using var pool = new NodeEnginePool(new NodeEnginePoolOptions()
+        {
+            Mode = NodeEnginePoolMode.Adaptive,
+            MinEngineCount = 1,
+            EngineCount = 3,
+            AdaptInterval = Timeout.InfiniteTimeSpan,
+        }, NullLoggerFactory.Instance, new NoServices());
+
+        await pool.PrepareAsync();
+        Assert.AreEqual(1, pool.GetStatistics().Engines.Count);
     }
 
     /// <summary>
