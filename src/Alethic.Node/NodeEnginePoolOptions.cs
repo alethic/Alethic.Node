@@ -121,6 +121,30 @@ public class NodeEnginePoolOptions
     public TimeSpan AcquireTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
+    /// How long acquisitions may go on waiting, with none of them served in between, before the pool counts itself
+    /// overloaded; unset, as by default, it never does.
+    /// </summary>
+    /// <remarks>
+    /// A line that empties now and then is a burst, which waiting rides out. One that has not emptied for this long
+    /// is a standing queue: the pool is not keeping up, and every acquisition waiting out
+    /// <see cref="AcquireTimeout"/> only makes each later than the one before. Overloaded, the pool waits
+    /// <see cref="OverloadAcquireTimeout"/> instead, and refuses acquisitions that have waited longer than that rather
+    /// than serving them late: so it fails fast what it cannot do, and does what it can for those still on time.
+    ///
+    /// Controlled delay, as networks manage their queues, in the form services use for their request queues. It works
+    /// in either <see cref="Mode"/>.
+    /// </remarks>
+    public TimeSpan? OverloadInterval { get; set; }
+
+    /// <summary>
+    /// How long an acquisition may wait for capacity while the pool is overloaded. Defaults to a hundred milliseconds.
+    /// </summary>
+    /// <remarks>
+    /// Only where <see cref="OverloadInterval"/> is set.
+    /// </remarks>
+    public TimeSpan OverloadAcquireTimeout { get; set; } = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>
     /// Runs once against each engine as it starts, before anything else is given it.
     /// </summary>
     /// <remarks>

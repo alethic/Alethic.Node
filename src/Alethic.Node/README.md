@@ -38,6 +38,43 @@ Without a container, construct the pool from its options, a logger factory and a
 `NullLoggerFactory.Instance`, and whatever `IServiceProvider` the host has, which `ConfigureEngine` is handed — and
 dispose of it when the host stops.
 
+## Learning the limits
+
+A pool is `Fixed` by default: `EngineCount` engines, each holding up to `MaxConcurrencyPerEngine` leases. An
+`Adaptive` pool learns both within bounds you set, reading itself every `AdaptInterval` (a second):
+
+```csharp
+services.AddNodeEnginePool(o =>
+{
+    o.Mode = NodeEnginePoolMode.Adaptive;
+    o.MinEngineCount = 1;              // and EngineCount, the most: still the CPU limit
+    o.EngineCount = 4;
+    o.MinConcurrencyPerEngine = 1;     // and MaxConcurrencyPerEngine, the most, where each engine starts
+    o.MaxConcurrencyPerEngine = 32;
+    o.TargetEventLoopDelay = TimeSpan.FromMilliseconds(40);
+});
+```
+
+- **Each engine's limit follows its event-loop delay:** how long work posted to the engine waits before its thread
+  runs it, measured by probes the pool posts every 20 ms. A lease's latency would say little, since much of a lease is
+  spent waiting on things that leave the thread free. Over `TargetEventLoopDelay`, the limit falls by the target over
+  the delay, by no more than half; under it, where the limit was reached, it rises by its square root. Work that only
+  waits climbs to many leases an engine; work that keeps the thread busy settles near one.
+- **The number of engines is found by hill climbing:** where acquisitions waited for capacity, the pool tries one more
+  engine, keeps it if the leases it completes a second rose by a tenth, and retires it otherwise. An engine that adds
+  throughput has a core and work of its own; one that does not is only another thread contending. Engines idle for
+  `EngineIdleTimeout` (thirty seconds) retire down to `MinEngineCount`.
+
+`GetStatistics()` reports what it has learned: each engine's load, limit and delay, and the acquisitions waiting.
+
+## Overload
+
+Acquisitions with no capacity wait in line, first come first served, up to `AcquireTimeout`. Set `OverloadInterval`,
+in either mode, to fail fast under a standing queue instead: once the line has gone that long without emptying, the
+pool counts itself overloaded, waits only `OverloadAcquireTimeout` (a hundred milliseconds), and refuses acquisitions
+that have waited longer than that rather than serving them late. A burst that clears within the interval is waited out
+as before.
+
 ## Constraints worth knowing
 
 - **Reference the RID-specific `Microsoft.JavaScript.LibNode.<rid>` package** for each runtime you deploy to. The

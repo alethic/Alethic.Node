@@ -64,6 +64,11 @@ public sealed class NodeEnginePool : IAsyncDisposable
     long completed;
 
     /// <summary>
+    /// When the line of acquisitions was last empty, as a <see cref="Stopwatch"/> timestamp. Under the lock.
+    /// </summary>
+    long lastEmpty = Stopwatch.GetTimestamp();
+
+    /// <summary>
     /// Engines being started, which count against the pool's size before they join it.
     /// </summary>
     int starting;
@@ -121,7 +126,8 @@ public sealed class NodeEnginePool : IAsyncDisposable
     /// returns.
     /// </remarks>
     /// <param name="cancellationToken">Abandons the acquisition.</param>
-    /// <exception cref="TimeoutException">No capacity came free within <see cref="NodeEnginePoolOptions.AcquireTimeout"/>.</exception>
+    /// <exception cref="TimeoutException">No capacity came free within <see cref="NodeEnginePoolOptions.AcquireTimeout"/>,
+    /// or, the pool being overloaded, <see cref="NodeEnginePoolOptions.OverloadAcquireTimeout"/>.</exception>
     public async Task<NodeEngineLease> AcquireAsync(CancellationToken cancellationToken = default)
     {
         Waiter? waiter = null;
@@ -145,7 +151,13 @@ public sealed class NodeEnginePool : IAsyncDisposable
             }
             else
             {
-                waiter = new Waiter();
+                var now = Stopwatch.GetTimestamp();
+
+                // Empty until now.
+                if (waiters.Count == 0)
+                    lastEmpty = now;
+
+                waiter = new Waiter(now, Overloaded(now) ? options.OverloadAcquireTimeout : options.AcquireTimeout);
                 waiter.Node = waiters.AddLast(waiter);
                 queuedPeak = Math.Max(queuedPeak, waiters.Count);
             }
@@ -278,7 +290,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
     public NodeEnginePoolStatistics GetStatistics()
     {
         lock (sync)
-            return new NodeEnginePoolStatistics(engines.Select(i => new NodeEngineStatistics(i.InFlight, i.Limit, i.LoopDelay)).ToArray(), waiters.Count);
+            return new NodeEnginePoolStatistics(engines.Select(i => new NodeEngineStatistics(i.InFlight, i.Limit, i.LoopDelay)).ToArray(), waiters.Count, Overloaded(Stopwatch.GetTimestamp()));
     }
 
     /// <summary>
@@ -578,19 +590,60 @@ public sealed class NodeEnginePool : IAsyncDisposable
     /// <summary>
     /// Hands whatever room the engines have to whoever is waiting, in turn.
     /// </summary>
+    /// <remarks>
+    /// Overloaded, an acquisition that has already waited longer than
+    /// <see cref="NodeEnginePoolOptions.OverloadAcquireTimeout"/> is refused rather than served late, and the room goes
+    /// to the next.
+    /// </remarks>
     void Dispatch()
     {
         lock (sync)
         {
-            while (waiters.First is { } first && TryClaim() is { } engine)
+            var now = Stopwatch.GetTimestamp();
+
+            while (waiters.First is { } first)
             {
+                var waiter = first.Value;
+
+                if (Overloaded(now) && Milliseconds(waiter.Enqueued, now) > options.OverloadAcquireTimeout.TotalMilliseconds)
+                {
+                    waiters.RemoveFirst();
+                    waiter.Node = null;
+                    waiter.Completion.TrySetException(Overload());
+                    continue;
+                }
+
+                if (TryClaim() is not { } engine)
+                    break;
+
                 waiters.RemoveFirst();
-                first.Value.Node = null;
+                waiter.Node = null;
 
                 // Its continuation runs elsewhere, so completing it here does not run anything under the lock.
-                first.Value.Completion.TrySetResult(engine);
+                waiter.Completion.TrySetResult(engine);
             }
+
+            if (waiters.Count == 0)
+                lastEmpty = now;
         }
+    }
+
+    /// <summary>
+    /// Whether acquisitions have gone on waiting, with none served in between, for longer than
+    /// <see cref="NodeEnginePoolOptions.OverloadInterval"/>. Under the lock.
+    /// </summary>
+    /// <param name="now">The time, as a <see cref="Stopwatch"/> timestamp.</param>
+    bool Overloaded(long now)
+    {
+        return options.OverloadInterval is { } interval && waiters.Count > 0 && Milliseconds(lastEmpty, now) > interval.TotalMilliseconds;
+    }
+
+    /// <summary>
+    /// What an acquisition refused for overload fails with.
+    /// </summary>
+    TimeoutException Overload()
+    {
+        return new TimeoutException($"The Node engine pool is overloaded: no capacity within {options.OverloadAcquireTimeout}.");
     }
 
     /// <summary>
@@ -600,8 +653,8 @@ public sealed class NodeEnginePool : IAsyncDisposable
     /// <param name="cancellationToken">Abandons it.</param>
     async Task<NodeEngine> WaitAsync(Waiter waiter, CancellationToken cancellationToken)
     {
-        using var timeout = new CancellationTokenSource(options.AcquireTimeout);
-        using var registration = timeout.Token.Register(() => Abandon(waiter, new TimeoutException($"No capacity in the Node engine pool within {options.AcquireTimeout}.")));
+        using var timeout = new CancellationTokenSource(waiter.Timeout);
+        using var registration = timeout.Token.Register(() => Abandon(waiter, waiter.Timeout == options.AcquireTimeout ? new TimeoutException($"No capacity in the Node engine pool within {options.AcquireTimeout}.") : Overload()));
         using var cancellation = cancellationToken.Register(() => Abandon(waiter, new OperationCanceledException(cancellationToken)));
 
         return await waiter.Completion.Task;
@@ -622,6 +675,9 @@ public sealed class NodeEnginePool : IAsyncDisposable
             waiters.Remove(node);
             waiter.Node = null;
             waiter.Completion.TrySetException(exception);
+
+            if (waiters.Count == 0)
+                lastEmpty = Stopwatch.GetTimestamp();
         }
     }
 
@@ -781,6 +837,28 @@ public sealed class NodeEnginePool : IAsyncDisposable
     /// </summary>
     sealed class Waiter
     {
+
+        /// <summary>
+        /// Initializes a new instance.
+        /// </summary>
+        /// <param name="enqueued">When it began waiting, as a <see cref="Stopwatch"/> timestamp.</param>
+        /// <param name="timeout">How long it may wait.</param>
+        public Waiter(long enqueued, TimeSpan timeout)
+        {
+            Enqueued = enqueued;
+            Timeout = timeout;
+        }
+
+        /// <summary>
+        /// When it began waiting, as a <see cref="Stopwatch"/> timestamp.
+        /// </summary>
+        public long Enqueued { get; }
+
+        /// <summary>
+        /// How long it may wait: <see cref="NodeEnginePoolOptions.AcquireTimeout"/>, or, where the pool was overloaded
+        /// when it began, <see cref="NodeEnginePoolOptions.OverloadAcquireTimeout"/>.
+        /// </summary>
+        public TimeSpan Timeout { get; }
 
         /// <summary>
         /// Completed with the engine it is given room on, or failed.

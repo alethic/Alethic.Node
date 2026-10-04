@@ -13,10 +13,12 @@ public sealed class NodeEnginePoolStatistics
     /// </summary>
     /// <param name="engines">Its engines.</param>
     /// <param name="queued">The acquisitions waiting for capacity.</param>
-    public NodeEnginePoolStatistics(IReadOnlyList<NodeEngineStatistics> engines, int queued)
+    /// <param name="overloaded">Whether the pool counts itself overloaded.</param>
+    public NodeEnginePoolStatistics(IReadOnlyList<NodeEngineStatistics> engines, int queued, bool overloaded)
     {
         Engines = engines;
         Queued = queued;
+        Overloaded = overloaded;
     }
 
     /// <summary>
@@ -28,5 +30,11 @@ public sealed class NodeEnginePoolStatistics
     /// The acquisitions waiting for capacity.
     /// </summary>
     public int Queued { get; }
+
+    /// <summary>
+    /// Whether the pool counts itself overloaded: acquisitions have gone on waiting, with none served in between, for
+    /// longer than <see cref="NodeEnginePoolOptions.OverloadInterval"/>.
+    /// </summary>
+    public bool Overloaded { get; }
 
 }
