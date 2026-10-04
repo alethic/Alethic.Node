@@ -21,11 +21,11 @@
     </ItemGroup>
 
     <ItemGroup Label="One payload runs every system in the matrix, so every native runtime rides along.">
-        <PackageReference Include="Microsoft.JavaScript.LibNode.win-x64" Version="20.1800.203" />
-        <PackageReference Include="Microsoft.JavaScript.LibNode.linux-x64" Version="20.1800.203" />
-        <PackageReference Include="Microsoft.JavaScript.LibNode.linux-arm64" Version="20.1800.203" />
-        <PackageReference Include="Microsoft.JavaScript.LibNode.osx-x64" Version="20.1800.203" />
-        <PackageReference Include="Microsoft.JavaScript.LibNode.osx-arm64" Version="20.1800.203" />
+        <PackageReference Include="Microsoft.JavaScript.LibNode.win-x64" Version="20.1800.215" />
+        <PackageReference Include="Microsoft.JavaScript.LibNode.linux-x64" Version="20.1800.215" />
+        <PackageReference Include="Microsoft.JavaScript.LibNode.linux-arm64" Version="20.1800.215" />
+        <PackageReference Include="Microsoft.JavaScript.LibNode.osx-x64" Version="20.1800.215" />
+        <PackageReference Include="Microsoft.JavaScript.LibNode.osx-arm64" Version="20.1800.215" />
     </ItemGroup>
 
     <ItemGroup>
