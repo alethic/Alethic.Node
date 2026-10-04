@@ -72,6 +72,7 @@ public class NodeEnginePoolLoadTests
         {
             Mode = NodeEnginePoolMode.Adaptive,
             MaxConcurrencyPerEngine = 32,
+            ReadMemoryLoad = () => 0.5,
         }, NullLoggerFactory.Instance, new NoServices());
 
         await pool.PrepareAsync();
@@ -112,6 +113,9 @@ public class NodeEnginePoolLoadTests
             EngineCount = 2,
             MinConcurrencyPerEngine = 2,
             MaxConcurrencyPerEngine = 2,
+
+            // Plenty of room: the machine's memory is not what this tests, and a build machine's may read full.
+            ReadMemoryLoad = () => 0.5,
         }, NullLoggerFactory.Instance, new NoServices());
 
         await pool.PrepareAsync();

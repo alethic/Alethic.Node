@@ -33,7 +33,8 @@ public class NodeEnginePoolGrowthTests
     /// the delay target is out of reach, so only the number of engines is learned.
     /// </summary>
     /// <param name="idle">How long an engine holds nothing before it is retired.</param>
-    /// <param name="memoryLoad">The memory load the pool reads; the machine's where not given.</param>
+    /// <param name="memoryLoad">The memory load the pool reads; plenty of room where not given, since the machine's
+    /// memory is not what these test.</param>
     static NodeEnginePool Pool(TimeSpan idle, Func<double?>? memoryLoad = null)
     {
         return new NodeEnginePool(new NodeEnginePoolOptions()
@@ -46,7 +47,7 @@ public class NodeEnginePoolGrowthTests
             TargetEventLoopDelay = TimeSpan.FromSeconds(10),
             EngineIdleTimeout = idle,
             AdaptInterval = Timeout.InfiniteTimeSpan,
-            ReadMemoryLoad = memoryLoad,
+            ReadMemoryLoad = memoryLoad ?? (() => 0.5),
         }, NullLoggerFactory.Instance, new NoServices());
     }
 
@@ -170,7 +171,9 @@ public class NodeEnginePoolGrowthTests
         }
 
         // One window of exactly the given calls, the same length as every other as the pool measures it: from the
-        // adapting that opened it, whatever happened between that and this.
+        // adapting that opened it, whatever happened between that and this. The calls returned is not the leases
+        // released, which is what the pool counts and which follow a moment after, so the window settles before it
+        // closes; and it is long enough that a slow machine's round trips fit in it with the settling to spare.
         var opened = 0L;
         async Task WindowAsync(int calls)
         {
@@ -180,7 +183,9 @@ public class NodeEnginePoolGrowthTests
             while (Volatile.Read(ref completed) < before + calls)
                 await Task.Delay(10);
 
-            var left = TimeSpan.FromMilliseconds(500) - TimeSpan.FromSeconds((Stopwatch.GetTimestamp() - opened) / (double)Stopwatch.Frequency);
+            await Task.Delay(150);
+
+            var left = TimeSpan.FromMilliseconds(1000) - TimeSpan.FromSeconds((Stopwatch.GetTimestamp() - opened) / (double)Stopwatch.Frequency);
             if (left > TimeSpan.Zero)
                 await Task.Delay(left);
 
