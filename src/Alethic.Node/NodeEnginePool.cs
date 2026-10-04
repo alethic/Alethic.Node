@@ -781,7 +781,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
         // is kept off whichever thread happened to ask for it.
         var engine = await Task.Run(() => new NodeEngine(platform, options.BaseDirectory ?? AppContext.BaseDirectory, engineLogger), cancellationToken);
         engine.Id = Interlocked.Increment(ref lastEngineId);
-        engine.Limit = options.MaxConcurrencyPerEngine;
+        engine.Limit = StartingLimit();
         engine.IdleSince = Stopwatch.GetTimestamp();
 
         // Before it joins the pool, so nothing can be handed an engine whose setup has not run.
@@ -804,6 +804,30 @@ public sealed class NodeEnginePool : IAsyncDisposable
         }
 
         return engine;
+    }
+
+    /// <summary>
+    /// The limit a new engine starts at: what the engines running have learned, where there are any, and otherwise the
+    /// most.
+    /// </summary>
+    /// <remarks>
+    /// An engine is started when the others are saturated, and one that started at the most would take all the
+    /// acquisitions waiting at once and run late for as many windows as it took its limit to fall to where the others'
+    /// already were. What the others have learned about the work is the best guess for it.
+    /// </remarks>
+    int StartingLimit()
+    {
+        lock (sync)
+        {
+            if (engines.Count == 0)
+                return options.MaxConcurrencyPerEngine;
+
+            var total = 0;
+            foreach (var engine in engines)
+                total += engine.Limit;
+
+            return Math.Max(options.MinConcurrencyPerEngine, (int)Math.Round(total / (double)engines.Count));
+        }
     }
 
     /// <summary>
