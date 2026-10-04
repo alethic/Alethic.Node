@@ -10,16 +10,31 @@ public class NodeEnginePoolOptions
 {
 
     int engineCount = 1;
+    int minEngineCount = 1;
+    TimeSpan engineIdleTimeout = TimeSpan.FromSeconds(30);
+    int minConcurrencyPerEngine = 1;
     int maxConcurrencyPerEngine = 4;
+    TimeSpan targetEventLoopDelay = TimeSpan.FromMilliseconds(40);
+    double memoryLoadLimit = 0.9;
+    TimeSpan adaptInterval = TimeSpan.FromSeconds(1);
 
     /// <summary>
-    /// Number of engines to run. Defaults to one.
+    /// How the pool sets its limits. <see cref="NodeEnginePoolMode.Fixed"/> unless set.
+    /// </summary>
+    public NodeEnginePoolMode Mode { get; set; } = NodeEnginePoolMode.Fixed;
+
+    /// <summary>
+    /// Number of engines to run. Defaults to one. In <see cref="NodeEnginePoolMode.Adaptive"/> mode, the most the pool
+    /// may run.
     /// </summary>
     /// <remarks>
     /// This must track the CPU the process is actually entitled to, and deliberately has no derived
     /// default: the processor count reports the host's cores rather than a container's quota, so
     /// deriving one misleads badly under orchestration. Spare CPU with too few engines goes unused,
     /// and engines beyond the available CPU only contend with each other.
+    ///
+    /// An adaptive pool finds out for itself how many of them are worth running, but never more than this, for the
+    /// same reason.
     /// </remarks>
     public int EngineCount
     {
@@ -28,7 +43,33 @@ public class NodeEnginePoolOptions
     }
 
     /// <summary>
-    /// Number of leases that may be held against one engine at a time. Defaults to four.
+    /// In <see cref="NodeEnginePoolMode.Adaptive"/> mode, the fewest engines the pool runs once it has started them.
+    /// Defaults to one.
+    /// </summary>
+    /// <remarks>
+    /// The pool starts this many as it needs them, as a fixed pool does. Above it, it adds an engine only where
+    /// acquisitions have had to wait for capacity, and keeps it only where it raised how many leases the pool
+    /// completes; it retires engines idle for <see cref="EngineIdleTimeout"/> back down to this.
+    /// </remarks>
+    public int MinEngineCount
+    {
+        get => minEngineCount;
+        set => minEngineCount = value > 0 ? value : throw new ArgumentOutOfRangeException(nameof(value), "Engine count must be greater than zero.");
+    }
+
+    /// <summary>
+    /// In <see cref="NodeEnginePoolMode.Adaptive"/> mode, how long an engine holds no lease before the pool retires it,
+    /// where it runs more than <see cref="MinEngineCount"/>. Defaults to thirty seconds.
+    /// </summary>
+    public TimeSpan EngineIdleTimeout
+    {
+        get => engineIdleTimeout;
+        set => engineIdleTimeout = value > TimeSpan.Zero ? value : throw new ArgumentOutOfRangeException(nameof(value), "The idle timeout must be greater than zero.");
+    }
+
+    /// <summary>
+    /// Number of leases that may be held against one engine at a time. Defaults to four. In
+    /// <see cref="NodeEnginePoolMode.Adaptive"/> mode, the most an engine's limit may rise to, and where it starts.
     /// </summary>
     /// <remarks>
     /// This is backpressure, not mutual exclusion. An engine overlaps many concurrent calls, since
@@ -43,9 +84,90 @@ public class NodeEnginePoolOptions
     }
 
     /// <summary>
+    /// In <see cref="NodeEnginePoolMode.Adaptive"/> mode, the least an engine's limit may fall to. Defaults to one.
+    /// </summary>
+    public int MinConcurrencyPerEngine
+    {
+        get => minConcurrencyPerEngine;
+        set => minConcurrencyPerEngine = value > 0 ? value : throw new ArgumentOutOfRangeException(nameof(value), "Concurrency must be greater than zero.");
+    }
+
+    /// <summary>
+    /// In <see cref="NodeEnginePoolMode.Adaptive"/> mode, the event-loop delay an engine is kept under: the 99th
+    /// percentile over each <see cref="AdaptInterval"/>. Defaults to 40 milliseconds.
+    /// </summary>
+    /// <remarks>
+    /// The delay is how late the engine's thread runs what is due on it, so it is what each request waits on top of
+    /// its own work. Over the target, the engine's limit falls in proportion; under it, the limit may rise.
+    /// </remarks>
+    public TimeSpan TargetEventLoopDelay
+    {
+        get => targetEventLoopDelay;
+        set => targetEventLoopDelay = value > TimeSpan.Zero ? value : throw new ArgumentOutOfRangeException(nameof(value), "The target delay must be greater than zero.");
+    }
+
+    /// <summary>
+    /// In <see cref="NodeEnginePoolMode.Adaptive"/> mode, the memory load above which the pool starts no engine of its
+    /// own: the fraction of the memory the process may use that is in use, by everything. Defaults to 0.9.
+    /// </summary>
+    /// <remarks>
+    /// Every engine is a heap, which the .NET garbage collector neither manages nor sees, so a pool that grows on its
+    /// own judgment must not grow the process into the limit of its machine or container. The load is what the
+    /// collector itself goes by: the physical memory in use against what is available, the whole machine's or the
+    /// container's, so what else runs there counts too, and on some systems so do the file pages cached in memory,
+    /// which read as use though they would be given up on demand. The collector lives with that imprecision, and so
+    /// does this: above the limit the pool holds at the engines it has, and a reading that is high for the wrong
+    /// reason costs it growth, never an engine. It retires none for it.
+    /// </remarks>
+    public double MemoryLoadLimit
+    {
+        get => memoryLoadLimit;
+        set => memoryLoadLimit = value > 0 && value <= 1 ? value : throw new ArgumentOutOfRangeException(nameof(value), "The memory load limit is a fraction from 0 to 1.");
+    }
+
+    /// <summary>
+    /// Reads the memory load, for tests: the machine's, where unset.
+    /// </summary>
+    internal Func<double?>? ReadMemoryLoad { get; set; }
+
+    /// <summary>
+    /// In <see cref="NodeEnginePoolMode.Adaptive"/> mode, how often the pool reads its engines and adapts its limits.
+    /// Defaults to one second. <see cref="System.Threading.Timeout.InfiniteTimeSpan"/> stops it adapting by itself.
+    /// </summary>
+    public TimeSpan AdaptInterval
+    {
+        get => adaptInterval;
+        set => adaptInterval = value > TimeSpan.Zero || value == System.Threading.Timeout.InfiniteTimeSpan ? value : throw new ArgumentOutOfRangeException(nameof(value), "The interval must be greater than zero.");
+    }
+
+    /// <summary>
     /// How long an acquisition may wait for capacity before it is abandoned. Defaults to ten seconds.
     /// </summary>
     public TimeSpan AcquireTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// How long acquisitions may go on waiting, with none of them served in between, before the pool counts itself
+    /// overloaded; unset, as by default, it never does.
+    /// </summary>
+    /// <remarks>
+    /// A line that empties now and then is a burst, which waiting rides out. One that has not emptied for this long
+    /// is a standing queue: the pool is not keeping up, and every acquisition waiting out
+    /// <see cref="AcquireTimeout"/> only makes each later than the one before. Overloaded, the pool waits
+    /// <see cref="OverloadAcquireTimeout"/> instead, and refuses acquisitions that have waited longer than that rather
+    /// than serving them late: so it fails fast what it cannot do, and does what it can for those still on time.
+    ///
+    /// Controlled delay, as networks manage their queues, in the form services use for their request queues. It works
+    /// in either <see cref="Mode"/>.
+    /// </remarks>
+    public TimeSpan? OverloadInterval { get; set; }
+
+    /// <summary>
+    /// How long an acquisition may wait for capacity while the pool is overloaded. Defaults to a hundred milliseconds.
+    /// </summary>
+    /// <remarks>
+    /// Only where <see cref="OverloadInterval"/> is set.
+    /// </remarks>
+    public TimeSpan OverloadAcquireTimeout { get; set; } = TimeSpan.FromMilliseconds(100);
 
     /// <summary>
     /// Runs once against each engine as it starts, before anything else is given it.

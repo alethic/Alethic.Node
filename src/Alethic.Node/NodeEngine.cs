@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -34,7 +35,8 @@ sealed class NodeEngine : IAsyncDisposable
         "process.on('unhandledRejection', (reason) => {\n" +
         "    console.error('[Alethic.Node] unhandled promise rejection:', reason);\n" +
         "});\n" +
-        TrackTimersScript;
+        TrackTimersScript +
+        HeapScript;
 
     /// <summary>
     /// Keeps hold of the timers an application schedules, so they can be let go of on the way out.
@@ -87,6 +89,26 @@ sealed class NodeEngine : IAsyncDisposable
             };
         })();
         """;
+
+    /// <summary>
+    /// Reads the engine's heap, for the pool's statistics.
+    /// </summary>
+    /// <remarks>
+    /// V8's own figures, in bytes: the heap in use, the heap committed, the most the heap may grow to, and the memory
+    /// outside the heap that JavaScript objects hold, such as buffers. The .NET garbage collector sees none of it: an
+    /// engine's memory is V8's, managed by V8's collector, and this is the only account of it.
+    /// </remarks>
+    const string HeapScript = """
+        globalThis.__alethicHeap = function () {
+            const s = require('v8').getHeapStatistics();
+            return [s.used_heap_size, s.total_heap_size, s.heap_size_limit, s.external_memory ?? 0];
+        };
+        """;
+
+    /// <summary>
+    /// How much of the engine's time passes between readings of its heap.
+    /// </summary>
+    static readonly long HeapSampleInterval = System.Diagnostics.Stopwatch.Frequency / 4;
 
     /// <summary>
     /// Unreferences every handle the runtime still holds.
@@ -143,14 +165,257 @@ sealed class NodeEngine : IAsyncDisposable
     }
 
     /// <summary>
-    /// The number of leases currently held against this engine.
+    /// The engine's id: stable for its life, and never reused in the process. Set by the pool as it starts.
+    /// </summary>
+    internal int Id;
+
+    /// <summary>
+    /// The number of leases currently held against this engine. Kept under the pool's lock.
     /// </summary>
     internal int InFlight;
 
     /// <summary>
-    /// The underlying runtime.
+    /// The number of leases the pool may hold against this engine at once. Kept under the pool's lock.
     /// </summary>
-    internal NodeEmbeddingThreadRuntime Runtime => runtime;
+    internal int Limit;
+
+    /// <summary>
+    /// The most leases held against this engine at once since the pool last adapted its limit. Kept under the pool's
+    /// lock.
+    /// </summary>
+    internal int Peak;
+
+    /// <summary>
+    /// The engine's event-loop delay as the pool last read it, in milliseconds. Kept under the pool's lock.
+    /// </summary>
+    internal double LoopDelay;
+
+    /// <summary>
+    /// When the engine last held no lease, as a <see cref="System.Diagnostics.Stopwatch"/> timestamp. Kept under the
+    /// pool's lock.
+    /// </summary>
+    internal long IdleSince;
+
+    /// <summary>
+    /// Whether the pool has retired the engine: it takes no more leases, and stops once the last it holds is returned.
+    /// Kept under the pool's lock.
+    /// </summary>
+    internal bool Retiring;
+
+    /// <summary>
+    /// Keeps the stamps: the work posted to the engine's thread and not yet started, and the longest any waited.
+    /// </summary>
+    readonly object stamps = new();
+
+    /// <summary>
+    /// When each piece of work still waiting for the engine's thread was posted, as
+    /// <see cref="System.Diagnostics.Stopwatch"/> timestamps, oldest first. Under <see cref="stamps"/>.
+    /// </summary>
+    readonly LinkedList<long> waiting = new();
+
+    /// <summary>
+    /// The longest any work waited for the engine's thread since the pool last read it, in milliseconds. Under
+    /// <see cref="stamps"/>.
+    /// </summary>
+    double waitMax;
+
+    /// <summary>
+    /// When the pool last read the wait, which began the window the wait is counted in, as a
+    /// <see cref="System.Diagnostics.Stopwatch"/> timestamp. Under <see cref="stamps"/>.
+    /// </summary>
+    long windowStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+
+    /// <summary>
+    /// The engine's heap as last read, in bytes: in use, committed, its limit, and the memory outside it. Under
+    /// <see cref="stamps"/>.
+    /// </summary>
+    long heapUsed, heapTotal, heapLimit, externalMemory;
+
+    /// <summary>
+    /// When the heap was last read, as a <see cref="System.Diagnostics.Stopwatch"/> timestamp; zero while it never was.
+    /// Under <see cref="stamps"/>.
+    /// </summary>
+    long heapSampled;
+
+    /// <summary>
+    /// The engine's heap as of its last work, in bytes: in use, committed, its limit, and the memory outside it that its
+    /// objects hold. Zero until it has worked.
+    /// </summary>
+    /// <remarks>
+    /// Read on the engine's own thread as work starts there, at most every quarter second of its time, rather than
+    /// asked for: a reading posted to a saturated engine would wait behind the saturation it was meant to show.
+    /// </remarks>
+    internal (long Used, long Total, long Limit, long External) Heap
+    {
+        get
+        {
+            lock (stamps)
+                return (heapUsed, heapTotal, heapLimit, externalMemory);
+        }
+    }
+
+    /// <summary>
+    /// Reads the heap, where it has not been read lately. On the engine's thread.
+    /// </summary>
+    /// <param name="now">The time, as a <see cref="System.Diagnostics.Stopwatch"/> timestamp.</param>
+    void SampleHeap(long now)
+    {
+        lock (stamps)
+        {
+            if (heapSampled != 0 && now - heapSampled < HeapSampleInterval)
+                return;
+
+            heapSampled = now;
+        }
+
+        var figures = JSValue.Global["__alethicHeap"].Call();
+        var used = (long)(double)figures[0];
+        var total = (long)(double)figures[1];
+        var limit = (long)(double)figures[2];
+        var external = (long)(double)figures[3];
+
+        lock (stamps)
+        {
+            heapUsed = used;
+            heapTotal = total;
+            heapLimit = limit;
+            externalMemory = external;
+        }
+    }
+
+    /// <summary>
+    /// The engine's event-loop delay over the window just ended, in milliseconds, and the start of the next.
+    /// </summary>
+    /// <remarks>
+    /// How long work posted to the engine waited before its thread ran it: what any lease's work waits, measured from
+    /// the leases themselves, which the pool posts anyway. The thread is one, so what is posted waits behind whatever
+    /// it is busy with, and only that. Work still waiting counts for as long as it has waited so far: an engine stuck
+    /// for the whole window has started nothing that could say so. Only the part of a wait within the window counts in
+    /// it.
+    /// </remarks>
+    /// <param name="now">The time, as a <see cref="System.Diagnostics.Stopwatch"/> timestamp.</param>
+    internal double ReadWait(long now)
+    {
+        lock (stamps)
+        {
+            var delay = waitMax;
+            if (waiting.First is { } oldest)
+                delay = Math.Max(delay, Milliseconds(Math.Max(oldest.Value, windowStarted), now));
+
+            waitMax = 0;
+            windowStarted = now;
+            return delay;
+        }
+    }
+
+    /// <summary>
+    /// Stamps work as posted to the engine's thread.
+    /// </summary>
+    LinkedListNode<long> Posted()
+    {
+        lock (stamps)
+            return waiting.AddLast(System.Diagnostics.Stopwatch.GetTimestamp());
+    }
+
+    /// <summary>
+    /// Stamps work as started on the engine's thread, records what it waited, and reads the heap now and then.
+    /// </summary>
+    /// <param name="posted">Its stamp from <see cref="Posted"/>.</param>
+    void Started(LinkedListNode<long> posted)
+    {
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+
+        lock (stamps)
+        {
+            if (posted.List == waiting)
+                waiting.Remove(posted);
+
+            waitMax = Math.Max(waitMax, Milliseconds(Math.Max(posted.Value, windowStarted), now));
+        }
+
+        SampleHeap(now);
+    }
+
+    /// <summary>
+    /// Takes back the stamp of work the runtime refused, so that it is not counted as waiting.
+    /// </summary>
+    /// <remarks>
+    /// Work the runtime took but never starts, which only a runtime being torn down does, keeps its stamp: the engine is
+    /// going, and nothing reads it again.
+    /// </remarks>
+    /// <param name="posted">Its stamp from <see cref="Posted"/>.</param>
+    void Unposted(LinkedListNode<long> posted)
+    {
+        lock (stamps)
+            if (posted.List == waiting)
+                waiting.Remove(posted);
+    }
+
+    /// <summary>
+    /// The time between two <see cref="System.Diagnostics.Stopwatch"/> timestamps, in milliseconds.
+    /// </summary>
+    /// <param name="from">The earlier.</param>
+    /// <param name="to">The later.</param>
+    static double Milliseconds(long from, long to)
+    {
+        return Math.Max(0, to - from) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+    }
+
+    /// <summary>
+    /// Runs work on this engine's thread, stamped.
+    /// </summary>
+    /// <typeparam name="T">What the work produces.</typeparam>
+    /// <param name="work">The work.</param>
+    public Task<T> RunAsync<T>(Func<Task<T>> work)
+    {
+        if (work is null)
+            throw new ArgumentNullException(nameof(work));
+        if (disposed)
+            throw new ObjectDisposedException(GetType().Name);
+
+        var posted = Posted();
+        try
+        {
+            return runtime.RunAsync(() =>
+            {
+                Started(posted);
+                return work();
+            });
+        }
+        catch
+        {
+            Unposted(posted);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Runs synchronous work on this engine's thread, stamped, blocking until it returns.
+    /// </summary>
+    /// <typeparam name="T">What the work produces.</typeparam>
+    /// <param name="work">The work.</param>
+    public T Run<T>(Func<T> work)
+    {
+        if (work is null)
+            throw new ArgumentNullException(nameof(work));
+        if (disposed)
+            throw new ObjectDisposedException(GetType().Name);
+
+        var posted = Posted();
+        try
+        {
+            return runtime.Run(() =>
+            {
+                Started(posted);
+                return work();
+            });
+        }
+        catch
+        {
+            Unposted(posted);
+            throw;
+        }
+    }
 
     /// <summary>
     /// Runs work against a module's exports on this engine's thread, loading the module first if
@@ -178,7 +443,7 @@ sealed class NodeEngine : IAsyncDisposable
             throw new ObjectDisposedException(GetType().Name);
 
         var path = await ResolveAsync(source, cancellationToken);
-        return await runtime.RunAsync(() => work(Require(path)));
+        return await RunAsync(() => work(Require(path)));
     }
 
     /// <summary>
@@ -197,7 +462,7 @@ sealed class NodeEngine : IAsyncDisposable
             throw new ObjectDisposedException(GetType().Name);
 
         var path = ResolveAsync(source, CancellationToken.None).GetAwaiter().GetResult();
-        return runtime.Run(() => work(Require(path)));
+        return Run(() => work(Require(path)));
     }
 
     /// <summary>
@@ -214,7 +479,7 @@ sealed class NodeEngine : IAsyncDisposable
             throw new ObjectDisposedException(GetType().Name);
 
         var path = await ResolveAsync(source, cancellationToken);
-        runtime.Run(() => Require(path).IsObject());
+        Run(() => Require(path).IsObject());
     }
 
     /// <summary>

@@ -60,7 +60,7 @@ public sealed class NodeEngineLease : IDisposable, IAsyncDisposable
         if (work is null)
             throw new ArgumentNullException(nameof(work));
 
-        return engine.Runtime.RunAsync(work);
+        return engine.RunAsync(work);
     }
 
     /// <summary>
@@ -100,7 +100,7 @@ public sealed class NodeEngineLease : IDisposable, IAsyncDisposable
         if (work is null)
             throw new ArgumentNullException(nameof(work));
 
-        return engine.Runtime.Run(work);
+        return engine.Run(work);
     }
 
     /// <summary>

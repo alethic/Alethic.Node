@@ -38,6 +38,61 @@ Without a container, construct the pool from its options, a logger factory and a
 `NullLoggerFactory.Instance`, and whatever `IServiceProvider` the host has, which `ConfigureEngine` is handed — and
 dispose of it when the host stops.
 
+## Learning the limits
+
+A pool is `Fixed` by default: `EngineCount` engines, each holding up to `MaxConcurrencyPerEngine` leases. An
+`Adaptive` pool learns both within bounds you set, reading itself every `AdaptInterval` (a second):
+
+```csharp
+services.AddNodeEnginePool(o =>
+{
+    o.Mode = NodeEnginePoolMode.Adaptive;
+    o.MinEngineCount = 1;              // and EngineCount, the most: still the CPU limit
+    o.EngineCount = 4;
+    o.MinConcurrencyPerEngine = 1;     // and MaxConcurrencyPerEngine, the most, where each engine starts
+    o.MaxConcurrencyPerEngine = 32;
+    o.TargetEventLoopDelay = TimeSpan.FromMilliseconds(40);
+});
+```
+
+- **Each engine's limit follows its event-loop delay:** how long work posted to the engine waits before its thread
+  runs it, measured from the leases themselves, each stamped when it is posted and when the thread starts it, so an
+  idle engine measures nothing and a busy one is measured by all it does. A lease's latency would say little, since
+  much of a lease is spent waiting on things that leave the thread free. Over `TargetEventLoopDelay`, the limit falls by the target over
+  the delay, by no more than half; under it, where the limit was reached, it rises by its square root. Work that only
+  waits climbs to many leases an engine; work that keeps the thread busy settles near one.
+- **The number of engines is found by hill climbing:** where acquisitions waited for capacity, the pool tries one more
+  engine, keeps it if the leases it completes a second rose by a tenth, and retires it otherwise. An engine that adds
+  throughput has a core and work of its own; one that does not is only another thread contending. Engines idle for
+  `EngineIdleTimeout` (thirty seconds) retire down to `MinEngineCount`, and come back the same way they went up, one
+  trial at a time: a burst after a quiet spell is served by the engines there are while the pool learns again.
+- **Scarce memory stops the growth.** Every engine is a heap, which the .NET garbage collector neither manages nor
+  sees, so above `MemoryLoadLimit` (0.9 of the memory the process may use, by everything on the machine or in the
+  container) the pool starts no engine of its own, whatever the queue says. It retires none for it.
+
+`GetStatistics()` reports what it has learned: each engine's load, limit and delay, the acquisitions waiting, and the
+memory load as last read. It
+also reports each engine's heap, in use, committed and its limit, and the memory its objects hold outside it, as of the
+engine's last work. An engine's memory is V8's, managed by V8's own collector; the .NET garbage collector sees none of
+it, so a process's managed heap says nothing about what its engines hold, and this is where to look.
+
+## Metrics
+
+The same figures are published under the meter `Alethic.Node` (`NodeEnginePool.MeterName`), so a collector such as
+OpenTelemetry (`.AddMeter("Alethic.Node")`) can chart them: gauges for the engines running, the acquisitions waiting,
+whether the pool is overloaded and the memory load, and for each engine, tagged `engine` with its id, its leases, limit, event-loop delay,
+heap in use, committed and limit, and external memory; counters for leases returned, acquisitions refused by reason
+(`timeout`, `overload`, `cancelled`), and engines started and retired; and a histogram of how long served acquisitions
+waited in line. With no collector listening, none of it costs anything.
+
+## Overload
+
+Acquisitions with no capacity wait in line, first come first served, up to `AcquireTimeout`. Set `OverloadInterval`,
+in either mode, to fail fast under a standing queue instead: once the line has gone that long without emptying, the
+pool counts itself overloaded, waits only `OverloadAcquireTimeout` (a hundred milliseconds), and refuses acquisitions
+that have waited longer than that rather than serving them late. A burst that clears within the interval is waited out
+as before.
+
 ## Constraints worth knowing
 
 - **Reference the RID-specific `Microsoft.JavaScript.LibNode.<rid>` package** for each runtime you deploy to. The

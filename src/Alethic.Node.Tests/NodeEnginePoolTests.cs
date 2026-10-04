@@ -258,4 +258,126 @@ public class NodeEnginePoolTests
         Assert.AreEqual(2, warmed);
     }
 
+    /// <summary>
+    /// Acquisitions waiting for capacity are given it in the order they came, as it is returned.
+    /// </summary>
+    [TestMethod]
+    public async Task Waiting_acquisitions_are_served_in_turn()
+    {
+        await using var services = BuildServices(o => o.MaxConcurrencyPerEngine = 1);
+        var pool = services.GetRequiredService<NodeEnginePool>();
+
+        var held = await pool.AcquireAsync();
+        var first = pool.AcquireAsync();
+        var second = pool.AcquireAsync();
+
+        Assert.AreEqual(2, pool.GetStatistics().Queued);
+        Assert.IsFalse(first.IsCompleted);
+
+        await held.DisposeAsync();
+        var firstLease = await first;
+        Assert.IsFalse(second.IsCompleted);
+
+        await firstLease.DisposeAsync();
+        await using var secondLease = await second;
+        Assert.AreEqual(0, pool.GetStatistics().Queued);
+    }
+
+    /// <summary>
+    /// A waiting acquisition cancelled leaves the line, and the next in line is not held up by it.
+    /// </summary>
+    [TestMethod]
+    public async Task A_cancelled_acquisition_leaves_the_line()
+    {
+        await using var services = BuildServices(o => o.MaxConcurrencyPerEngine = 1);
+        var pool = services.GetRequiredService<NodeEnginePool>();
+
+        await using var held = await pool.AcquireAsync();
+
+        using var cancellation = new CancellationTokenSource();
+        var cancelled = pool.AcquireAsync(cancellation.Token);
+        var next = pool.AcquireAsync();
+        Assert.AreEqual(2, pool.GetStatistics().Queued);
+
+        cancellation.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => cancelled);
+        Assert.AreEqual(1, pool.GetStatistics().Queued);
+
+        await held.DisposeAsync();
+        await using var served = await next;
+        Assert.AreEqual(0, pool.GetStatistics().Queued);
+    }
+
+    /// <summary>
+    /// Disposing the pool fails the acquisitions waiting on it, and refuses any after.
+    /// </summary>
+    [TestMethod]
+    public async Task Disposing_the_pool_fails_what_waits_and_refuses_what_follows()
+    {
+        var services = BuildServices(o => o.MaxConcurrencyPerEngine = 1);
+        var pool = services.GetRequiredService<NodeEnginePool>();
+
+        var held = await pool.AcquireAsync();
+        var waiting = pool.AcquireAsync();
+        Assert.IsFalse(waiting.IsCompleted);
+
+        await services.DisposeAsync();
+
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => waiting);
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => pool.AcquireAsync());
+
+        // Returning the lease to a disposed pool is harmless.
+        await held.DisposeAsync();
+    }
+
+    /// <summary>
+    /// An engine's heap is reported as of its last work: what a module keeps is seen in it, and what it holds outside
+    /// the heap is seen apart.
+    /// </summary>
+    [TestMethod]
+    public async Task An_engine_reports_its_heap()
+    {
+        await using var services = BuildServices();
+        var pool = services.GetRequiredService<NodeEnginePool>();
+        var module = TestModules.FromText("memory.cjs", """
+            let kept = null, buffer = null;
+            module.exports.keep = () => { kept = Array.from({ length: 400000 }, (_, i) => ({ i })); buffer = Buffer.alloc(32 * 1024 * 1024); return true; };
+            module.exports.drop = () => { kept = null; buffer = null; return true; };
+            """);
+
+        // Before: a sample from the engine's first work.
+        await pool.RunAsync(module, exports => Task.FromResult((bool)exports.CallMethod("drop")));
+        var before = pool.GetStatistics().Engines.Single();
+        Assert.IsTrue(before.HeapUsed > 0 && before.HeapTotal >= before.HeapUsed && before.HeapLimit > before.HeapTotal, $"The heap read {before.HeapUsed} of {before.HeapTotal}, limit {before.HeapLimit}.");
+
+        // After: the next sample comes with work a quarter second on.
+        await pool.RunAsync(module, exports => Task.FromResult((bool)exports.CallMethod("keep")));
+        await Task.Delay(300);
+        await pool.RunAsync(() => Task.FromResult(true));
+        var after = pool.GetStatistics().Engines.Single();
+
+        Assert.IsTrue(after.HeapUsed > before.HeapUsed + 8 * 1024 * 1024, $"The heap in use went from {before.HeapUsed} to {after.HeapUsed}.");
+        // Near the buffer's 32 MiB: whatever else was outside the heap may have gone meanwhile.
+        Assert.IsTrue(after.ExternalMemory >= before.ExternalMemory + 30 * 1024 * 1024, $"The external memory went from {before.ExternalMemory} to {after.ExternalMemory}.");
+    }
+
+    /// <summary>
+    /// The leases an engine is configured and warmed on are outside its capacity, and give back none they did not take.
+    /// </summary>
+    [TestMethod]
+    public async Task Configuring_and_warming_engines_leaves_their_capacity_as_it_was()
+    {
+        await using var services = BuildServices(o =>
+        {
+            o.MaxConcurrencyPerEngine = 1;
+            o.AcquireTimeout = TimeSpan.FromMilliseconds(200);
+            o.ConfigureEngine = (_, lease) => lease.RunAsync(() => Task.FromResult(true));
+        });
+        var pool = services.GetRequiredService<NodeEnginePool>();
+        await pool.PrepareAsync(lease => lease.RunAsync(() => Task.FromResult(true)));
+
+        await using var held = await pool.AcquireAsync();
+        await Assert.ThrowsExactlyAsync<TimeoutException>(() => pool.AcquireAsync());
+    }
+
 }
