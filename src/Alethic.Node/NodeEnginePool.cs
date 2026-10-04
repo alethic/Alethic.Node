@@ -29,6 +29,23 @@ namespace Alethic.Node;
 public sealed class NodeEnginePool : IAsyncDisposable
 {
 
+    /// <summary>
+    /// The name of the meter every pool's metrics are under: <c>Alethic.Node</c>.
+    /// </summary>
+    /// <remarks>
+    /// Gauges, observed from <see cref="GetStatistics"/> when a collector asks: the engines running, the acquisitions
+    /// waiting and whether the pool is overloaded, and for each engine, tagged <c>engine</c> with its id, its leases,
+    /// limit, event-loop delay, heap in use, committed and limit, and external memory. Counters: leases returned,
+    /// acquisitions refused by reason, engines started and retired. And a histogram of how long served acquisitions
+    /// waited in line. With no collector listening, none of it costs anything.
+    /// </remarks>
+    public const string MeterName = "Alethic.Node";
+
+    /// <summary>
+    /// The last engine id given out, across every pool in the process.
+    /// </summary>
+    static int lastEngineId;
+
     readonly NodeEnginePoolOptions options;
     readonly IServiceProvider services;
     readonly ILoggerFactory loggerFactory;
@@ -40,6 +57,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
     readonly List<NodeEngine> retiring = [];
     readonly EngineCountClimber climber = new();
     readonly CancellationTokenSource stopping = new();
+    readonly NodeEnginePoolMetrics metrics;
     readonly Task? adapting;
 
     /// <summary>
@@ -108,6 +126,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
         targetEngines = options.Mode == NodeEnginePoolMode.Adaptive ? options.MinEngineCount : options.EngineCount;
 
         logger = loggerFactory.CreateLogger<NodeEnginePool>();
+        metrics = new NodeEnginePoolMetrics(GetStatistics);
 
         if (options.Mode == NodeEnginePoolMode.Adaptive)
             adapting = Task.Run(() => AdaptLoopAsync(stopping.Token));
@@ -293,7 +312,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
             {
                 var engine = engines[i];
                 var heap = engine.Heap;
-                statistics[i] = new NodeEngineStatistics(engine.InFlight, engine.Limit, engine.LoopDelay, heap.Used, heap.Total, heap.Limit, heap.External);
+                statistics[i] = new NodeEngineStatistics(engine.Id, engine.InFlight, engine.Limit, engine.LoopDelay, heap.Used, heap.Total, heap.Limit, heap.External);
             }
 
             return new NodeEnginePoolStatistics(statistics, waiters.Count, Overloaded(Stopwatch.GetTimestamp()));
@@ -322,6 +341,8 @@ public sealed class NodeEnginePool : IAsyncDisposable
                     stop = true;
             }
         }
+
+        metrics.LeaseReturned();
 
         if (stop)
             Stop(engine);
@@ -472,6 +493,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
     {
         engines.Remove(engine);
         engine.Retiring = true;
+        metrics.EngineRetired();
 
         if (engine.InFlight == 0)
             return engine;
@@ -586,6 +608,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
                     waiters.RemoveFirst();
                     waiter.Node = null;
                     waiter.Completion.TrySetException(Overload());
+                    metrics.AcquisitionRefused("overload");
                     continue;
                 }
 
@@ -594,6 +617,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
 
                 waiters.RemoveFirst();
                 waiter.Node = null;
+                metrics.AcquisitionServed(Milliseconds(waiter.Enqueued, now));
 
                 // Its continuation runs elsewhere, so completing it here does not run anything under the lock.
                 waiter.Completion.TrySetResult(engine);
@@ -629,9 +653,11 @@ public sealed class NodeEnginePool : IAsyncDisposable
     /// <param name="cancellationToken">Abandons it.</param>
     async Task<NodeEngine> WaitAsync(Waiter waiter, CancellationToken cancellationToken)
     {
+        var overloaded = waiter.Timeout != options.AcquireTimeout;
+
         using var timeout = new CancellationTokenSource(waiter.Timeout);
-        using var registration = timeout.Token.Register(() => Abandon(waiter, waiter.Timeout == options.AcquireTimeout ? new TimeoutException($"No capacity in the Node engine pool within {options.AcquireTimeout}.") : Overload()));
-        using var cancellation = cancellationToken.Register(() => Abandon(waiter, new OperationCanceledException(cancellationToken)));
+        using var registration = timeout.Token.Register(() => Abandon(waiter, overloaded ? Overload() : new TimeoutException($"No capacity in the Node engine pool within {options.AcquireTimeout}."), overloaded ? "overload" : "timeout"));
+        using var cancellation = cancellationToken.Register(() => Abandon(waiter, new OperationCanceledException(cancellationToken), "cancelled"));
 
         return await waiter.Completion.Task;
     }
@@ -641,7 +667,8 @@ public sealed class NodeEnginePool : IAsyncDisposable
     /// </summary>
     /// <param name="waiter">The waiting acquisition.</param>
     /// <param name="exception">Why it fails.</param>
-    void Abandon(Waiter waiter, Exception exception)
+    /// <param name="reason">Why, for the metrics: timeout, overload or cancelled.</param>
+    void Abandon(Waiter waiter, Exception exception, string reason)
     {
         lock (sync)
         {
@@ -655,6 +682,8 @@ public sealed class NodeEnginePool : IAsyncDisposable
             if (waiters.Count == 0)
                 lastEmpty = Stopwatch.GetTimestamp();
         }
+
+        metrics.AcquisitionRefused(reason);
     }
 
     /// <summary>
@@ -717,6 +746,8 @@ public sealed class NodeEnginePool : IAsyncDisposable
             throw new ObjectDisposedException(GetType().Name);
         }
 
+        metrics.EngineStarted();
+
         // Whatever room the new engine has beyond what its starter takes goes to whoever is waiting.
         Dispatch();
         return engine;
@@ -736,6 +767,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
         // Standing a runtime up is synchronous and takes a couple of hundred milliseconds, so it
         // is kept off whichever thread happened to ask for it.
         var engine = await Task.Run(() => new NodeEngine(platform, options.BaseDirectory ?? AppContext.BaseDirectory, engineLogger), cancellationToken);
+        engine.Id = Interlocked.Increment(ref lastEngineId);
         engine.Limit = options.MaxConcurrencyPerEngine;
         engine.IdleSince = Stopwatch.GetTimestamp();
 
@@ -803,6 +835,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
             await engine.DisposeAsync();
 
         stopping.Dispose();
+        metrics.Dispose();
     }
 
     /// <summary>

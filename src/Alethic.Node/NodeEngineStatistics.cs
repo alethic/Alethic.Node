@@ -9,6 +9,7 @@ public sealed class NodeEngineStatistics
     /// <summary>
     /// Initializes a new instance.
     /// </summary>
+    /// <param name="id">Its id.</param>
     /// <param name="inFlight">The leases held against it.</param>
     /// <param name="limit">The most leases it may hold at once.</param>
     /// <param name="loopDelay">Its event-loop delay when last read, in milliseconds.</param>
@@ -16,8 +17,9 @@ public sealed class NodeEngineStatistics
     /// <param name="heapTotal">Its heap committed, in bytes.</param>
     /// <param name="heapLimit">The most its heap may grow to, in bytes.</param>
     /// <param name="externalMemory">The memory outside its heap that its objects hold, in bytes.</param>
-    public NodeEngineStatistics(int inFlight, int limit, double loopDelay, long heapUsed, long heapTotal, long heapLimit, long externalMemory)
+    public NodeEngineStatistics(int id, int inFlight, int limit, double loopDelay, long heapUsed, long heapTotal, long heapLimit, long externalMemory)
     {
+        Id = id;
         InFlight = inFlight;
         Limit = limit;
         LoopDelay = loopDelay;
@@ -26,6 +28,12 @@ public sealed class NodeEngineStatistics
         HeapLimit = heapLimit;
         ExternalMemory = externalMemory;
     }
+
+    /// <summary>
+    /// Its id: stable for its life, and never reused in the process, so that its figures can be followed across
+    /// readings and told from those of the engine that takes its place.
+    /// </summary>
+    public int Id { get; }
 
     /// <summary>
     /// The leases held against it.

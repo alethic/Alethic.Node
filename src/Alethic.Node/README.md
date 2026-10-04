@@ -72,6 +72,15 @@ also reports each engine's heap, in use, committed and its limit, and the memory
 engine's last work. An engine's memory is V8's, managed by V8's own collector; the .NET garbage collector sees none of
 it, so a process's managed heap says nothing about what its engines hold, and this is where to look.
 
+## Metrics
+
+The same figures are published under the meter `Alethic.Node` (`NodeEnginePool.MeterName`), so a collector such as
+OpenTelemetry (`.AddMeter("Alethic.Node")`) can chart them: gauges for the engines running, the acquisitions waiting and
+whether the pool is overloaded, and for each engine, tagged `engine` with its id, its leases, limit, event-loop delay,
+heap in use, committed and limit, and external memory; counters for leases returned, acquisitions refused by reason
+(`timeout`, `overload`, `cancelled`), and engines started and retired; and a histogram of how long served acquisitions
+waited in line. With no collector listening, none of it costs anything.
+
 ## Overload
 
 Acquisitions with no capacity wait in line, first come first served, up to `AcquireTimeout`. Set `OverloadInterval`,

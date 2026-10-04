@@ -165,6 +165,11 @@ sealed class NodeEngine : IAsyncDisposable
     }
 
     /// <summary>
+    /// The engine's id: stable for its life, and never reused in the process. Set by the pool as it starts.
+    /// </summary>
+    internal int Id;
+
+    /// <summary>
     /// The number of leases currently held against this engine. Kept under the pool's lock.
     /// </summary>
     internal int InFlight;
