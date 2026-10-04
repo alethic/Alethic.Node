@@ -1,198 +1,95 @@
 # Alethic.Node
 
-A real Node runtime embedded in a .NET process, through [node-api-dotnet](https://github.com/microsoft/node-api-dotnet).
-No sidecar process, no HTTP hop.
+Node.js embedded in a .NET process. A pool of real Node runtimes (libnode, through
+[node-api-dotnet](https://github.com/microsoft/node-api-dotnet)) runs JavaScript modules inside your application, with
+no child process and no socket between .NET and JavaScript. On top of the pool, packages for serving a JavaScript
+application's pages from ASP.NET Core or ASP.NET (System.Web), and for hosting JavaScript components on Web Forms
+pages.
 
-**Alethic.Node** is the engines: a pool of libnode runtimes and Node's own modules, for any host, .NET Framework 4.7.2
-included — a console, a service, an ASP.NET Web Forms site. The hosts build on it:
+Runs on .NET 8 and 9, and on .NET Framework 4.7.2 and later.
 
-- **Alethic.Node.Http** — serving a JavaScript application's `fetch` handler over HTTP, whatever the .NET host: the
-  protocol both ASP.NET hosts speak, so one application is served unchanged by either.
-- **Alethic.Node.AspNetCore** — server-side rendering for ASP.NET Core: the request handler and the endpoint mapping.
-  It was published as Alethic.AspNetCore.Node through 0.3; its types moved from that namespace to
-  `Alethic.Node.AspNetCore`, and the engines' to `Alethic.Node`.
-- **Alethic.Node.AspNet** — Node in an ASP.NET (System.Web) application on .NET Framework: the application's pool,
-  Node work done on behalf of a request with the request's thread serving what it asks of the site, `fetch` of
-  the site answered in process by the site's own handlers, and whole pages from an application's `fetch` handler on
-  System.Web routes.
-- **Alethic.Node.AspNet.Components** — JavaScript components hosted on Web Forms pages: the `Component` control, its props
-  from markup and code, its callbacks as server commands, and its server render.
+## Which package
 
-The repository previously carried a fork of MintPlayer.AspNetCore.SpaServices, the community
-continuation of Microsoft's SpaServices.Extensions. That model — JSON-RPC into a Node child
-process, per-framework prerenderer builders, routes re-declared in C# — is retired and removed;
-the final state of that lineage is preserved on the `wip/spa-restructure-2025-02` branch.
+| You want to | Package |
+| --- | --- |
+| Run JavaScript in any .NET process: a console, a service, a job | [Alethic.Node](src/Alethic.Node/README.md) |
+| Serve a JavaScript application's pages from ASP.NET Core | [Alethic.Node.AspNetCore](src/Alethic.Node.AspNetCore/README.md) |
+| Run JavaScript in an ASP.NET (System.Web) site, or serve an application's pages from it | [Alethic.Node.AspNet](src/Alethic.Node.AspNet/README.md) |
+| Put React (or any framework's) components on Web Forms pages | [Alethic.Node.AspNet.Components](src/Alethic.Node.AspNet.Components/README.md) |
 
-## The three pieces
+[Alethic.Node.Http](src/Alethic.Node.Http/README.md) holds the protocol the two web hosts share for serving an
+application, so one application is served unchanged by either; you reference it only through them.
 
-**Engines run JavaScript.** `NodeEnginePool` holds several, each a libnode runtime on its own
-thread. Openly libnode, not an abstraction: registered in DI, pooled for CPU parallelism, and usable
-for any JavaScript work — a lease puts you on an engine's thread writing ordinary node-api-dotnet.
-There is one package, and it names the runtime it runs on, because that is the only runtime it runs
-on.
+Every package needs the native Node runtime for each platform you run on: `Microsoft.JavaScript.LibNode.win-x64`,
+`linux-x64`, `linux-arm64`, `osx-x64` or `osx-arm64`. Reference the ones you deploy to, not the umbrella package,
+which carries all of them.
 
-**Modules are Node's.** A module is loaded with `require` and cached in `require.cache` by resolved
-filename, so it evaluates once per engine and keeps its module scope — the identity a module has in
-any other Node program. This library caches nothing of its own, and holds no per-engine state at all.
-
-**A request handler answers requests.** `INodeRequestHandler` is prepare and send, and separates
-application *protocols*, not runtimes — every implementation runs on the same engines. `FetchRequestHandler`
-calls the application's `fetch` handler, which most current SSR frameworks expose or compose with.
-The `Request` is built and the `Response` taken apart directly on the engine's thread, where those
-types live; nothing is serialized and the module evaluates untouched.
-
-**A route provider says what routes exist.** `INodeRouteProvider` is a separate object because
-routing is not part of the fetch convention — that convention describes a handler and says nothing
-about routes. Written against a framework, it reads the router the application already dispatches
-on, so nothing is declared twice and nothing can drift. Mounting without one serves the application
-whole from a fallback endpoint, which is the honest outcome rather than a degradation.
-
-## Shape
-
-One registration — the pool. Everything else is constructed where it is mounted:
+## In short
 
 ```csharp
-builder.Services.AddNodeEnginePool(o =>
-{
-    o.EngineCount = 4;                 // must track the CPU limit; see remarks on the option
-    o.MaxConcurrencyPerEngine = 4;     // backpressure, not mutual exclusion
-});
+services.AddNodeEnginePool(o => o.EngineCount = 2);
+
+var pool = provider.GetRequiredService<NodeEnginePool>();
+var module = NodeModuleSource.FromFile("tools.cjs");
+
+var slug = await pool.RunAsync(module, exports =>
+    Task.FromResult((string)exports.CallMethod("slugify", "Enchanted Rock")));
+```
+
+The pool starts engines as they are needed, loads the module once on each with Node's own `require`, and runs the work
+on the engine's thread, where the JavaScript values are. Everything else in the repository is a way of putting a web
+request in front of that.
+
+Serving an application's pages from ASP.NET Core:
+
+```csharp
+builder.Services.AddNodeEnginePool(o => o.EngineCount = 2);
 
 var app = builder.Build();
 app.UseStaticFiles();
-app.UseRouting();                      // explicit, or the fallback outruns static files
-
-// Renders through the application's fetch handler, mounted on a fallback endpoint. No routes: a
-// fetch handler describes none.
-app.MapNodeFetchHandler(o => o.Module = NodeModuleSource.FromFile("ssr/server.cjs"));
-
-await app.RunAsync();
+app.UseRouting();
+app.MapNodeFetchHandler(o => o.Module = NodeModuleSource.FromFile("ssr/app.cjs"));
+app.Run();
 ```
 
-The pool is the only thing worth registering: it owns the threads, and the whole application shares
-one. For an endpoint per route, pass a handler and a provider naming the same module — which is all
-the sharing they need, since Node loads it once per engine and both see that instance:
-
-```csharp
-var pool = app.Services.GetRequiredService<NodeEnginePool>();
-var source = NodeModuleSource.FromFile("ssr/server.cjs");
-
-app.MapNode(
-    new FetchRequestHandler(pool, new() { Module = source }),
-    new MyRouteProvider(pool, source));
-```
-
-## The application contract
-
-The application's server module is a self-contained CommonJS bundle exporting a fetch handler - the
-shape Cloudflare Workers defines and Deno, Bun, and the framework adapters targeting them follow:
-
-```js
-export default {
-    fetch(request, env, ctx) { /* return a Response; sync or async */ },
-};
-```
-
-- **`request`** - a real `Request`, built on the engine's thread.
-- **`env`** - what only the host knows, from `FetchRequestHandlerOptions.Environment`. Input only:
-  built fresh per request. Cloudflare puts live bindings here; this host has strings to give, which
-  the convention permits since it leaves the contents to the host.
-- **`ctx`** - `waitUntil(promise)` and `passThroughOnException()`. `waitUntil` matters on Workers
-  because the isolate is frozen after the response; a pooled engine is not, so the promise runs
-  either way and `waitUntil` only keeps its rejection from going unobserved.
-
-Two deliberate departures: a bare function default export is accepted as the handler, which Workers
-does not allow but `createRequestHandler`-style factories produce; and `scheduled`, `queue`, and
-`tail` are not called, this being an HTTP handler.
-
-Nothing else is asked. There is no init hook and no route export. Asynchronous per-engine startup is
-the application's own, memoized in module scope exactly as a Workers application memoizes
-per-isolate setup - module scope being per isolate there and per engine here.
-
-The per-framework cost of that contract:
-
-| Framework | Entry |
-|---|---|
-| Hono, Elysia, Nitro (worker preset) | `export default app` |
-| React Router 7 / Remix | `export default createRequestHandler(build)` — the bare function is accepted |
-| Astro | wrap `app.render(request)` in a few lines |
-| SvelteKit | `fetch` calls `server.respond(request)`; `server.init({ env })` memoized in module scope |
-| Angular | wrap `AngularAppEngine.handle(request)`, mapping its null to a 404 or the shell |
-
-Where a framework does not expose a fetch handler at all, the answer is another `INodeRequestHandler`
-rather than glue in the application: it mounts through the same `MapNode` and runs on the
-same engines. That is rare. Far more often the handler is fine and only the *routes* are
-framework-specific — TanStack Start, say — which needs a route provider and no handler at all.
-
-## Routes
-
-The fetch convention has no notion of routes, so nothing above produces any. An endpoint per route
-comes from an `INodeRouteProvider`, written against a framework and reading the router that framework
-already has — React Router's build manifest, TanStack Start's route tree, SvelteKit's manifest:
-
-```csharp
-public Task<IReadOnlyList<RenderRoute>> GetRoutesAsync(CancellationToken ct = default) =>
-    pool.RunAsync(module, exports =>
-    {
-        // On the engine's thread. Nothing is serialized; only plain .NET data leaves the scope.
-        var table = NodeModuleExports.Default(exports)["router"];
-        ...
-    }, ct);
-```
-
-The application is asked for nothing it would not have anyway. Routes are read from where they
-already live rather than declared a second time beside them, which is what keeps them from drifting.
-
-`RenderRoute.Pattern` is a URLPattern pathname — the WHATWG standard every framework's route grammar
-lowers to — which the host converts to an ASP.NET route template. `RenderMode` is the per-route
-policy: `Client` (shell only, the engine never invoked), `Server`, or `Prerender`. A route's `id`
-names its endpoint, so `LinkGenerator.GetPathByName` builds URLs from the router itself.
-
-An engine that provides no routes is served entirely from the fallback — the honest outcome for a
-protocol that describes none. A provider that *throws* fails the deployment, because an engine that
-cannot read the router it was written for is broken, and that must not pass for an application that
-simply has no routes.
-
-## The pool on its own
-
-The pool is Alethic.Node's, and works with no web anywhere in sight — on .NET Framework too, where a
-host without a container constructs it from its options. A lease is a claim on one engine, and inside
-`RunAsync` you are on its thread writing node-api-dotnet:
-
-```csharp
-var pool = provider.GetRequiredService<NodeEnginePool>();
-
-var result = await pool.RunAsync(NodeModuleSource.FromFile("tool.cjs"), async exports =>
-    (int)await ((JSPromise)exports.CallMethod("transform", input)).AsTask());
-```
-
-## Constraints worth knowing
-
-- **Engine count must be configured, never derived.** Inside a container the processor count
-  reports the host's cores, not the quota. Engines exist for CPU parallelism; one engine already
-  overlaps many concurrent renders, because everything a module awaits yields to its event loop.
-- **CommonJS only.** The embedded runtime registers no dynamic-import callback, so ES modules and
-  `import()` do not resolve. Bundle fully static (esbuild `--format=cjs`, code splitting off).
-- **Responses stream.** The response is returned when its head is known and the body follows; a
-  failure after the first byte can truncate the body but cannot change the status.
-- **Cancellation aborts the render**, through `AbortSignal` on the request, not merely the wait.
-- Reference the RID-specific `Microsoft.JavaScript.LibNode.<rid>` package. The umbrella package
-  depends on every platform at once and lands ~640 MB of native libraries in the output.
+where `app.cjs` is a bundle whose default export has a `fetch(request, env, ctx)` function returning a `Response`, the
+shape most server-rendering frameworks build to.
 
 ## Samples
 
-- `samples/Sample.React` — the web path end to end: React 19 server rendering with suspended data
-  resolved into the markup, client hydration over it, and a route provider reading the application's
-  own router to drive the endpoint table. `dotnet run` the server, which builds its client,
-  `samples/Sample.Client`, as it builds.
-- `samples/Sample.Console` — the pool with no web anywhere in sight: a console application takes a
-  lease and drives a plain JavaScript module, synchronous calls, promises, and structured results
-  alike, through ordinary node-api-dotnet.
-- `samples/Sample.Load` — an adaptive pool under a workload that changes shape, watched as it learns: a console
-  application that prints a line a second of what the pool has decided and checks, phase by phase, what it should
-  have done.
-- `samples/Sample.WebForms` — React components on ASP.NET Web Forms pages with the `Component` control: props in markup,
-  bound and from code, full and partial postbacks, `UpdatePanel`s, async and sync pages, a `Repeater`, failures,
-  and a catalog sharing a cart with the master page. `dotnet run` it, which serves it with IIS Express.
-- `samples/Sample.Client` — the React client both web samples share: a Yarn project whose Vite build makes each
-  sample's browser and server bundles, which their server projects reference it for.
+| Sample | What it shows |
+| --- | --- |
+| [Sample.Console](samples/Sample.Console) | The pool on its own: a console application calling a JavaScript module. |
+| [Sample.Load](samples/Sample.Load) | An adaptive pool under a changing workload, watched as it learns, with its decisions checked. |
+| [Sample.React](samples/Sample.React) | A React application served from ASP.NET Core: server rendering, hydration, and an endpoint per route read from the application's own router. |
+| [Sample.WebForms](samples/Sample.WebForms) | React components on Web Forms pages, every way a page can drive them, and the same application's pages served from System.Web routes. |
+| [Sample.Client](samples/Sample.Client) | The React client the two web samples share, built with Vite into each sample's bundles. |
+
+## Building
+
+The solution is `Alethic.Node.slnx`. It needs the .NET 9 SDK, and for the Web Forms sample and the .NET Framework
+packages, a Windows machine with the .NET Framework 4.7.2 and 4.8 reference assemblies, which Visual Studio installs.
+The client needs Node and Yarn, which Corepack provides: `corepack enable` once per machine.
+
+```shell
+dotnet build Alethic.Node.slnx
+```
+
+The tests are MSTest projects under `src`, one per package, built as executables: run
+`src/<Project>/bin/<Configuration>/<tfm>/<Project>.exe` on .NET Framework, or
+`dotnet src/<Project>/bin/<Configuration>/<tfm>/<Project>.dll` on .NET. They run real Node engines and need the
+`LibNode` package for the machine, which each test project references.
+
+CI builds and tests on Windows, Linux and macOS, and packs to `dist/nuget`.
+
+## Constraints
+
+- **One Node per process.** Node starts once per process and cannot start again, so every pool in a process shares
+  one runtime platform. An ASP.NET application restarted in a new AppDomain of the same process cannot start Node
+  again until the process is recycled; keep such hosts from restarting applications in place.
+- **CommonJS only.** The embedded runtime cannot `import()`, so modules are CommonJS, bundled with their
+  dependencies and without code splitting.
+- **Module scope is per engine, and shared by everything the engine runs.** A module loads once per engine and keeps
+  its state for the engine's life; a rebuilt module is not picked up until the host restarts.
+- **An engine's memory is V8's.** The .NET garbage collector neither manages nor sees it. The pool reports each
+  engine's heap, and an adaptive pool stops growing when the machine's memory is scarce.

@@ -1,114 +1,142 @@
 # Alethic.Node
 
-Node embedded in a .NET process, through [node-api-dotnet](https://github.com/microsoft/node-api-dotnet). No
-sidecar process, no IPC. It is libnode, and the package says so: there is no runtime abstraction here.
+Node.js embedded in a .NET process: a pool of real Node runtimes (libnode, through
+[node-api-dotnet](https://github.com/microsoft/node-api-dotnet)), each on its own thread, running JavaScript modules
+inside your application. No child process, no socket.
 
-For any host: .NET 8 and 9, and .NET Framework 4.7.2 and later, so an ASP.NET Web Forms application can use it as
-well as a console or a service. [Alethic.Node.AspNetCore](https://www.nuget.org/packages/Alethic.Node.AspNetCore)
-builds server-side rendering for ASP.NET Core on it.
+For any host: .NET 8 and 9, and .NET Framework 4.7.2 and later. The ASP.NET Core and ASP.NET packages build on it;
+use this one directly in a console, a service, a job, or anywhere else you have JavaScript to run.
 
-## Two things
+## Install
 
-**Engines** run JavaScript. A `NodeEnginePool` holds several, each a libnode runtime on its own thread. It owns the
-threads, and the whole application shares one.
+```shell
+dotnet add package Alethic.Node
+dotnet add package Microsoft.JavaScript.LibNode.win-x64    # and/or linux-x64, linux-arm64, osx-x64, osx-arm64
+```
 
-**Modules** are Node's. A module is loaded with `require` and cached in `require.cache` by resolved filename, so it
-evaluates once per engine and keeps its module scope — the identity a module has in any other Node program. This
-library caches nothing of its own.
+The `LibNode` package carries the native runtime for one platform and puts it under `runtimes/<rid>/native`, where the
+pool finds it. Reference the platforms you deploy to; the umbrella package carries all of them, some 640 MB.
+
+## Use
+
+Register the pool, and run work against a module:
 
 ```csharp
 services.AddNodeEnginePool(o =>
 {
-    o.EngineCount = 4;                 // must track the CPU limit; see remarks on the option
-    o.MaxConcurrencyPerEngine = 4;     // backpressure, not mutual exclusion
+    o.EngineCount = 2;                 // engines are CPU parallelism: match the cores the process may use
+    o.MaxConcurrencyPerEngine = 4;     // leases an engine holds at once: backpressure, not exclusion
 });
 
 var pool = provider.GetRequiredService<NodeEnginePool>();
+var module = NodeModuleSource.FromFile("tools.cjs");
 
-var result = await pool.RunAsync(NodeModuleSource.FromFile("tool.cjs"), async exports =>
-    (int)await ((JSPromise)exports.CallMethod("transform", input)).AsTask());
+var slug = await pool.RunAsync(module, exports =>
+    Task.FromResult((string)exports.CallMethod("slugify", "Enchanted Rock")));
+
+var digest = await pool.RunAsync(module, async exports =>
+    (string)await ((JSPromise)exports.CallMethod("digest", "enchanted rock")).AsTask());
 ```
 
-A one-shot puts you on an engine's thread writing ordinary node-api-dotnet. For several steps that must share one
-engine — or a claim that outlives a single call — take a lease instead: `await using var lease = await
-pool.AcquireAsync();` and run against it. A lease is a capacity claim and an affinity pin, not exclusivity; engines
-overlap many concurrent calls anyway.
+Inside the callback you are on the engine's thread, writing node-api-dotnet against the module's exports: `JSValue`,
+`JSPromise`, `JSReference`. Two rules from that library matter most. A `JSValue` is valid only in the scope that
+produced it, and an `await` ends the scope, so anything held across one goes through a `JSReference`; and only plain
+.NET data leaves the callback.
 
-Without a container, construct the pool from its options, a logger factory and a service provider —
-`NullLoggerFactory.Instance`, and whatever `IServiceProvider` the host has, which `ConfigureEngine` is handed — and
-dispose of it when the host stops.
+Modules are Node's own: loaded with `require`, cached per engine by filename, evaluated once, keeping their module
+scope for the engine's life. The library caches nothing of its own.
 
-## Learning the limits
+**Leases.** A one-shot `RunAsync` acquires and releases capacity around one call. Where several calls must share one
+engine, or the claim must outlive a call, take a lease:
 
-A pool is `Fixed` by default: `EngineCount` engines, each holding up to `MaxConcurrencyPerEngine` leases. An
-`Adaptive` pool learns both within bounds you set, reading itself every `AdaptInterval` (a second):
+```csharp
+await using var lease = await pool.AcquireAsync();
+var first = await lease.RunAsync(module, exports => ...);
+var second = await lease.RunAsync(module, exports => ...);   // the same engine, so the same module state
+```
+
+A lease claims a share of one engine's capacity, not the engine: many leases run on an engine at once, because
+everything a module awaits yields to its event loop. `Run` and `Acquire` are the synchronous forms, for work whose value
+is produced synchronously on the engine's thread.
+
+**Warm-up.** `PrepareAsync` starts the pool's engines and runs something on each, so the first request does not pay for
+it:
+
+```csharp
+await pool.PrepareAsync(lease => lease.ImportAsync(module));
+```
+
+**Without a container.** Construct the pool from its options, a logger factory and a service provider
+(`NullLoggerFactory.Instance` and whatever `IServiceProvider` the host has), and dispose of it when the host stops.
+
+## Configuring
+
+| Option | Default | |
+| --- | --- | --- |
+| `EngineCount` | 1 | Engines to run; adapting, the most. Match the cores the process may actually use: inside a container the processor count reports the host's. |
+| `MaxConcurrencyPerEngine` | 4 | Leases an engine holds at once; adapting, the most, and where each engine's limit starts. |
+| `AcquireTimeout` | 10 s | How long an acquisition waits for capacity before it fails. |
+| `ConfigureEngine` | | Runs once on each engine as it starts, before anything else: a global installed, a module warmed. |
+| `LibNodePath` | | Where the native runtime is, where it is not under `runtimes/<rid>/native` or beside the application. |
+| `BaseDirectory` | the application's | Root for Node's package resolution, for a module that reaches a `node_modules`. |
+
+### Adaptive mode
+
+By default the limits are fixed at what the options say. Set `Mode` to `Adaptive` and the pool learns them, within
+bounds you set, reading itself every `AdaptInterval` (a second):
 
 ```csharp
 services.AddNodeEnginePool(o =>
 {
     o.Mode = NodeEnginePoolMode.Adaptive;
-    o.MinEngineCount = 1;              // and EngineCount, the most: still the CPU limit
+    o.MinEngineCount = 1;
     o.EngineCount = 4;
-    o.MinConcurrencyPerEngine = 1;     // and MaxConcurrencyPerEngine, the most, where each engine starts
+    o.MinConcurrencyPerEngine = 1;
     o.MaxConcurrencyPerEngine = 32;
-    o.TargetEventLoopDelay = TimeSpan.FromMilliseconds(40);
 });
 ```
 
 - **Each engine's limit follows its event-loop delay:** how long work posted to the engine waits before its thread
-  runs it, measured from the leases themselves, each stamped when it is posted and when the thread starts it, so an
-  idle engine measures nothing and a busy one is measured by all it does. A lease's latency would say little, since
-  much of a lease is spent waiting on things that leave the thread free. Over `TargetEventLoopDelay`, the limit falls by the target over
-  the delay, by no more than half; under it, where the limit was reached, it rises by its square root. Work that only
-  waits climbs to many leases an engine; work that keeps the thread busy settles near one.
-- **The number of engines is found by hill climbing:** where acquisitions waited for capacity, the pool tries one more
-  engine, keeps it if the leases it completes a second rose by a tenth, and retires it otherwise. An engine that adds
-  throughput has a core and work of its own; one that does not is only another thread contending. Engines idle for
-  `EngineIdleTimeout` (thirty seconds) retire down to `MinEngineCount`, and come back the same way they went up, one
-  trial at a time: a burst after a quiet spell is served by the engines there are while the pool learns again.
-- **Scarce memory stops the growth.** Every engine is a heap, which the .NET garbage collector neither manages nor
-  sees, so above `MemoryLoadLimit` (0.9 of the memory the process may use, by everything on the machine or in the
-  container) the pool starts no engine of its own, whatever the queue says. It retires none for it.
+  runs it, measured from the leases themselves. Over `TargetEventLoopDelay` (40 ms) the limit falls, by no more than
+  half a window; under it, where the limit was what held the work back, it rises. Work that waits on I/O settles at
+  many leases an engine; work that computes settles near one.
+- **The number of engines is found by trial:** where acquisitions waited for capacity, the pool starts one more
+  engine, keeps it if throughput rose by a tenth, and retires it otherwise. Engines idle for `EngineIdleTimeout`
+  (30 s) retire down to `MinEngineCount`. A new engine starts at the limit the others have learned.
+- **Scarce memory stops the growth:** above `MemoryLoadLimit` (0.9 of the memory the process may use, by everything on
+  the machine or in the container) no engine is started. Every engine is a heap the .NET garbage collector does not
+  see.
 
-`GetStatistics()` reports what it has learned: each engine's load, limit and delay, the acquisitions waiting, and the
-memory load as last read. It
-also reports each engine's heap, in use, committed and its limit, and the memory its objects hold outside it, as of the
-engine's last work. An engine's memory is V8's, managed by V8's own collector; the .NET garbage collector sees none of
-it, so a process's managed heap says nothing about what its engines hold, and this is where to look.
+### Overload
 
-## Metrics
+Acquisitions with no capacity wait in line, first come first served, up to `AcquireTimeout`. Set `OverloadInterval`
+to fail fast under a standing queue instead: once the line has gone that long without emptying, the pool counts
+itself overloaded, waits only `OverloadAcquireTimeout` (100 ms), and refuses acquisitions that have waited longer than
+that rather than serving them late. A burst that clears within the interval is waited out. Works in either mode.
 
-The same figures are published under the meter `Alethic.Node` (`NodeEnginePool.MeterName`), so a collector such as
-OpenTelemetry (`.AddMeter("Alethic.Node")`) can chart them: gauges for the engines running, the acquisitions waiting,
-whether the pool is overloaded and the memory load, and for each engine, tagged `engine` with its id, its leases, limit, event-loop delay,
-heap in use, committed and limit, and external memory; counters for leases returned, acquisitions refused by reason
-(`timeout`, `overload`, `cancelled`), and engines started and retired; and a histogram of how long served acquisitions
-waited in line. With no collector listening, none of it costs anything.
+## Watching it
 
-## Overload
+`GetStatistics()` answers at once, without touching any engine's thread: for the pool, the acquisitions waiting,
+whether it is overloaded and the memory load; for each engine, by a stable id, its leases, limit, event-loop delay,
+and heap in use, committed and limit, plus the memory its objects hold outside the heap. The heap figures are V8's,
+read on the engine's thread as its work starts, and are the only account of an engine's memory: the .NET garbage
+collector sees none of it.
 
-Acquisitions with no capacity wait in line, first come first served, up to `AcquireTimeout`. Set `OverloadInterval`,
-in either mode, to fail fast under a standing queue instead: once the line has gone that long without emptying, the
-pool counts itself overloaded, waits only `OverloadAcquireTimeout` (a hundred milliseconds), and refuses acquisitions
-that have waited longer than that rather than serving them late. A burst that clears within the interval is waited out
-as before.
+The same figures are published as metrics under the meter `Alethic.Node` (`NodeEnginePool.MeterName`), for
+OpenTelemetry or any `MeterListener`: gauges for all of the above, counters for leases returned, acquisitions refused
+by reason (`timeout`, `overload`, `cancelled`) and engines started and retired, and a histogram of how long served
+acquisitions waited in line. Nothing is measured until a collector listens.
 
-## Constraints worth knowing
+The pool logs its decisions at `Debug` under `Alethic.Node.NodeEnginePool`; the engines log each call at `Trace`.
 
-- **Reference the RID-specific `Microsoft.JavaScript.LibNode.<rid>` package** for each runtime you deploy to. The
-  umbrella package depends on every platform at once and lands ~640 MB of native libraries in the output. Where the
-  library is neither beside the application nor under `runtimes/<rid>/native` — a web application on .NET Framework,
-  whose base directory is the site and not `bin` — set `LibNodePath`.
-- **Engine count must be configured, never derived.** Inside a container the processor count reports the host's
-  cores, not the quota. One engine already overlaps many concurrent calls, because everything a module awaits yields
-  to its event loop; engines exist for CPU parallelism.
+## Constraints
+
 - **One Node per process.** Node starts once per process and cannot start again, so every pool in a process shares
-  one platform. Where a process holds more than one copy of this assembly — ASP.NET on .NET Framework restarting an
-  application in a new AppDomain of the same process — a copy that finds the library already loaded by another refuses
-  to start, on Windows, rather than fail natively. Keep such hosts from restarting applications in place.
-- **CommonJS only.** The embedded runtime registers no dynamic-import callback, so ES modules and `import()` do not
-  resolve. Bundle fully static — for esbuild, `--format=cjs` with code splitting off.
-- **Module scope is shared across concurrent calls on an engine**, since the module is loaded once and reused.
-  Per-call state belongs in the call — `AsyncLocalStorage`, say — not at module scope.
-- **A rebuilt module is not picked up.** `require.cache` holds a module for the runtime's life, so rebuilding while the
-  host runs changes nothing until restart.
+  one runtime platform. An ASP.NET application restarted in a new AppDomain of the same process cannot start Node
+  again until the process is recycled.
+- **CommonJS only.** The embedded runtime cannot `import()`, so a module is CommonJS, bundled with its dependencies
+  and without code splitting (for esbuild, `--format=cjs` with splitting off).
+- **Module scope is shared** by every call on an engine, since the module loads once. Per-call state belongs in the
+  call, in an `AsyncLocalStorage` say, not at module scope.
+- **A rebuilt module is not picked up** until the host restarts: Node holds it for the engine's life.
+- **Cancelling an acquisition** abandons the wait. Work already running on an engine runs to completion.

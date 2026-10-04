@@ -1,28 +1,47 @@
 # Alethic.Node.AspNet.Components
 
-Lets an ASP.NET Web Forms page host JavaScript components — React, or any other framework — through a
-`Component` control. The control behaves like any other control on the page:
-- its props are set in markup and changed from code;
-- the props are kept in view state;
-- its callbacks raise server commands;
-- it renders on the server, on Node embedded in the worker process through
-  [Alethic.Node.AspNet](https://www.nuget.org/packages/Alethic.Node.AspNet).
+JavaScript components on ASP.NET Web Forms pages, through a `Component` control. React or any other framework: the
+control places a component in its element, and the component is one more control on the page.
 
-A control names a component by two things: the **module** it is in, and its **name** within that module. Each side has
-its own module, because each side has its own build:
-- **`Module`**, for the browser: an ES module that exports `outlet` and the components; or, where it is not set, the
-  page's global scope, where the page's own scripts put them.
-- **`ServerModule`**, for the server: a CommonJS file that exports `render` and the same components.
+- Its props are set in markup, bound, or changed from code, and kept in view state.
+- Its callbacks raise server commands, which post back, partially inside an `UpdatePanel`.
+- It renders on the server first, on Node.js embedded in the worker process through
+  [Alethic.Node.AspNet](https://www.nuget.org/packages/Alethic.Node.AspNet), so the page's HTML carries it.
+- A partial postback that renders the control again updates the component in place, so what it holds in the browser
+  lives on.
 
-Both follow the contract under [The modules](#the-modules).
+## Install
+
+```shell
+dotnet add package Alethic.Node.AspNet.Components
+dotnet add package Microsoft.JavaScript.LibNode.win-x64
+```
+
+Register the control's prefix in `web.config`, and point every control at your client's two modules with a skin in a
+style sheet theme, so that a page's own values win:
+
+```xml
+<pages styleSheetTheme="Site">
+    <controls>
+        <add tagPrefix="node" namespace="Alethic.Node.AspNet.Components" assembly="Alethic.Node.AspNet.Components" />
+    </controls>
+</pages>
+```
+
+```aspx
+<%-- App_Themes/Site/Component.skin --%>
+<%@ Register Assembly="Alethic.Node.AspNet.Components" Namespace="Alethic.Node.AspNet.Components" TagPrefix="node" %>
+<node:Component runat="server" Module="~/client/client.js" ServerModule="~/App_Data/client/server.cjs" />
+```
+
+`Module` is the browser's module, an ES module the page imports; `ServerModule` is the server's, a CommonJS bundle Node
+requires. Each is a build of your client, and each exports the components and one function, under
+[The modules](#the-modules).
 
 ## On a page
 
 ```aspx
-<%@ Register Assembly="Alethic.Node.AspNet.Components" Namespace="Alethic.Node.AspNet.Components" TagPrefix="node" %>
-
-<node:Component ID="rcPanel" runat="server" OnCommand="rcPanel_Command"
-    Module="~/client/client.js" ServerModule="~/App_Data/client/server.cjs" Name="GreetingPanel">
+<node:Component ID="rcPanel" runat="server" Name="GreetingPanel" OnCommand="rcPanel_Command">
     <node:ComponentProp Name="title" Value="Hello" />
     <node:ComponentProp Name="limit" Value="5" Type="Number" />
     <node:ComponentProp Name="filter">
@@ -36,22 +55,24 @@ Both follow the contract under [The modules](#the-modules).
 </node:Component>
 ```
 
-Nested props need no `runat="server"`, as a list's items need none. From code:
+`Name` is the component's export in the modules, or a dotted path to it, as `Catalog.ProductCard`. A prop with
+children is an object; one whose children have no names is an array. Nested props need no `runat="server"`. A value
+may be bound, `Value='<%# product.Sku %>'`, and keeps its type.
+
+From code:
 
 ```csharp
 rcPanel.Props["title"] = "Pipettes";
 rcPanel.Props["onSelect"] = new ComponentCommand("Select");
-rcPanel.Props.Remove("limit");          // the component's default applies
+rcPanel.Props.Remove("limit");          // the component's own default applies
 ```
 
-A prop is kept in view state only where code changed it from what the markup declared, and like any other control's
-state, `EnableViewState="false"` turns that off.
+A prop changed from code is kept in view state, as any control property is; `EnableViewState="false"` turns that off.
 
 ## Commands
 
-A callback prop reaches the component as a function. Calling it raises the control's `Command` event, the way a
-button's `CommandName` raises its container's command. The command then bubbles, so a `Repeater` raises it as an item
-command.
+A callback prop reaches the component as a function returning a promise. Calling it raises the control's `Command`
+event, as a button's `CommandName` raises its container's, and the command bubbles: in a `Repeater`, to `ItemCommand`.
 
 ```csharp
 protected void rcPanel_Command(object sender, ComponentCommandEventArgs e)
@@ -59,102 +80,59 @@ protected void rcPanel_Command(object sender, ComponentCommandEventArgs e)
     switch (e.CommandName)
     {
         case "Greeted":
-            e.Result = SaveAsync(e.Argument<string>(0));     // the callback's promise resolves to this
+            e.Result = SaveAsync(e.Argument<string>(0));     // what the component's promise resolves to
             break;
     }
 }
 ```
 
-- **The result:** `e.Result` is what the callback's promise resolves to. It may be any value that serializes, or a
-  `Task` of one. If the handler throws, the promise rejects.
-- **Where the command is raised:**
-  - **In the browser:** the command posts back. Inside an `UpdatePanel`, or on any page with a `ScriptManager`, the
-    postback is partial and the result comes back with it.
-  - **During the server render:** the command is raised there and then, in the page's own request.
-- **Asynchronous results** need the page to be `Async="true"`.
-- **Before posting back:** `OnClientCommand` names a JavaScript function that sees each command in the browser first.
-  If it returns `false`, the command doesn't post back.
-
-## Properties
-
-Beside `Props` and `OnClientCommand`:
-
-| Property | |
-| --- | --- |
-| `Module` | The browser's module. A `~/` path must be there, and is stamped with its write time; any other URL or specifier is imported as it is. Not set, the module is the page's global scope: `outlet` and the component are what the page's own scripts put there. |
-| `ServerModule` | The server's module, `require`d by Node in the worker process. A `~/` or absolute path, which must be there. Without it the component renders only in the browser. |
-| `Name` | The component: an export of the module, or a dotted path through one, as `Catalog.ProductCard`. Found in `Module` in the browser and in `ServerModule` on the server. |
-| `ServerRender` | Whether this component renders on the server, where there is a `ServerModule`. `true` unless set. |
-| `ServerRenderTimeout` | How long the page waits for its server render. Ten seconds unless set. |
-| `ScriptAttributes` | Attributes for the inline script that places the component, for sites whose filters rewrite inline scripts. |
-
-The control assumes nothing about where a site keeps its JavaScript. To set the modules for every control on the site,
-use a skin in the site's theme, set as a style sheet theme so a page's own values win:
-
-```aspx
-<node:Component runat="server" Module="~/client/client.js" ServerModule="~/App_Data/client/server.cjs" />
-```
-
-The page links the module's stylesheet, if it has one, as it links any other.
-
-What runs in the browser is one script, `Components.js`, embedded in the assembly and registered once per page: through
-the `ScriptManager` where the page has one, served by `ScriptResource.axd`, and otherwise by `WebResource.axd`. Each
-control writes only a call to it with its own data, `AlethicNodeComponents.place({ … })`, registered with the
-`ScriptManager` so that partial postbacks place components again. The pool is `AspNetNode.Pool` (see
-Alethic.Node.AspNet).
+- `e.Arguments` are what the component passed, as JSON; `e.Argument<T>(i)` reads one.
+- `e.Result` is what the promise resolves to: any value that serializes, or a `Task` of one, which needs the page to
+  be `Async="true"`. A handler that throws rejects the promise.
+- In the browser, the command posts back: partially, with the result coming back in the response, where the page has
+  a `ScriptManager`. During the server render, it is raised there and then, in the page's own request.
+- `OnClientCommand` names a JavaScript function that sees each command first; returning `false` keeps it in the
+  browser.
 
 ## Server rendering
 
-Where a control has a `ServerModule`, its component renders once `PreRender` is complete, with that module's
-`render`, one after another with the page's other components that share the module. Each control then sends its
-component's HTML inside its element. The browser shows that HTML until the component has rendered there. Whether it then replaces that HTML or
-hydrates it is the module's choice.
+With a `ServerModule`, each component renders on the server once `PreRender` is done, with the module's `render`, and
+its HTML goes inside the control's element. The browser shows that HTML until the component has rendered there.
+A `fetch` of the site made while rendering is answered in process, as the visitor, by the site's own handler.
 
-A component's `fetch` of the site is answered in process, by the site's own handler, as the visitor (see
-Alethic.Node.AspNet).
+Nothing that fails is passed over. A component that throws, or that leaves one of its callbacks' promises rejected,
+makes its control throw a `ComponentRenderException`, with a command handler's exception as the inner exception. A
+`Name` the module has nothing at fails the same way. A render that fails as a whole, or times out, fails the page.
 
-Nothing that fails is passed over:
-- A component that throws, or that rejects one of its callbacks' promises without catching it, makes its control throw
-  a `ComponentRenderException` from its render. A command handler's exception becomes the inner exception.
-- A `Name` the module has nothing at fails that component the same way.
-- A render that fails as a whole, or that times out, fails the page.
-- A server module that is rebuilt while the site runs is not picked up until the application pool recycles.
+| Property | Default | |
+| --- | --- | --- |
+| `Module` | | The browser's module. A `~/` path must exist, and is stamped with its write time; any other URL or specifier is imported as it is. Unset, the component and `outlet` are read from the page's global scope, where a plain script put them. |
+| `ServerModule` | | The server's module, a `~/` or absolute path that must exist. Unset, the component renders only in the browser. |
+| `ServerRender` | `true` | Whether this component renders on the server. |
+| `ServerRenderTimeout` | 10 s | How long the page waits for its server render. |
+| `ScriptAttributes` | | Attributes for the control's inline script, for sites whose filters rewrite inline scripts. |
+
+The browser side is one script, `Components.js`, embedded in the assembly and registered once per page through the
+`ScriptManager` where there is one. Each control writes only a call to it. The page links the client's stylesheet, if
+it has one, as it links any other.
 
 ## The modules
 
-The control finds the component in the module, then hands it to one of two functions the module exports. How they render
-is up to the module: which framework, one root per component or one for the page, replacing the server's HTML or
-hydrating it. The examples here use React.
+Your client's two builds each export the components and one function. How they render is yours to decide: which
+framework, one root per component or one for the page, replacing the server's HTML or hydrating it. These examples
+use React.
 
-Each module is self-contained, as far as the control is concerned. Components from different modules come from
-different builds, and share nothing their modules don't share, React included. That is the modules' author's to arrange
-where it is wanted.
+### Browser: `outlet(component, element, props)`
 
-### `outlet(component, element, props)`
+Places a component in the control's element, which holds the server's HTML where there was a server render. `props`
+are ready to use; each callback is already a function returning a promise. It returns a function that removes the
+component, or an object with `remove()` and, optionally, `update(element, props)`.
 
-Exported by the browser's module, or, for a control with no `Module`, defined in the page's global scope by the page's
-own scripts before the control's script runs, at the end of the form.
-
-- **`component`** is what `Name` found in the module.
-- **`element`** is the control's element. It holds the server's HTML where the component rendered on the server.
-- **`props`** are the component's props. Each callback is already a function returning a promise of the command's
-  result; pass it through.
-- **It returns** a function that removes the component, or an object with `remove()` and, optionally,
-  `update(element, props)`.
-
-The control calls `outlet` from a script it registers with the page's `ScriptManager` where there is one, so the
-control is placed again after every partial postback that renders it, in a new element with new props. The library
-knows a component by its control, not by its element, and the module need not watch the page:
-
-- placed again with the same component from the same module, where there is an `update`, the library calls it with
-  the new element and props. The component is the same one, and what it holds in the browser lives on; how it moves to
-  the new element is the module's to decide.
-- placed again otherwise, the library removes it and calls `outlet` anew.
-- when its element leaves the page, by a partial postback's new markup or by any script, and no element with its id
-  has taken its place, the library removes it.
-
-Nothing is kept across a full postback, which loads the page anew: a component whose state should survive one passes
-it to the page with a callback, and the page gives it back as a prop.
+The control is placed again after every partial postback that renders it, in a new element with new props. Where the
+module provided `update`, the library calls it instead of removing and placing anew, so the component and its state
+live on; where it did not, the component is replaced. A component whose element leaves the page is removed. Nothing
+survives a full postback, which loads the page anew: state that should is passed to the page in a callback and comes
+back as a prop.
 
 ```tsx
 import { createRoot } from "react-dom/client";
@@ -178,27 +156,15 @@ export function outlet(Component, element, props) {
 }
 ```
 
-### `render(component, props, state)`
+### Server: `render(component, props, state)`
 
-Exported by the server's module, which runs on Node embedded in the worker process. That runtime cannot `import()`, so
-the module is CommonJS. Node's `require` resolves what it requires as it would for any program, so a module that
-bundles its dependencies needs nothing beside it. A bundled module also needs `process.env.NODE_ENV` defined.
+Renders one component to its HTML, or throws why there is none. `props` are as in the browser, each callback a
+function raising the command on the page. `state` is one plain object shared by every component of one page render,
+and new for each render: a cache the page's components share goes there. The library calls `render` for each component
+on the page in turn, waits for the commands they called, and reports each one's HTML or failure to its control.
 
-- **`component`** is what `Name` found in the module.
-- **`props`** are the component's props. Each callback is a function returning a promise, which raises the command on
-  the page there and then.
-- **`state`** is one plain object for the whole page render, the same for each of its components and new for every
-  page: whatever the page's components share, such as a cache, goes on it.
-- **It resolves to** the component's HTML, or throws why there is none.
-
-The library calls it for each component on the page, one after another, and does the rest:
-- it waits for the commands each component called to be answered;
-- a component that throws, or leaves a command's rejection unhandled, fails, with the command handler's exception as
-  the inner exception where that is what failed it;
-- it reports what became of each component to the control.
-
-A `fetch` of the site made while `render` runs, to a relative URL or the page's own origin, is answered in process by
-the site's own handler, as the visitor.
+The module is CommonJS, bundled with its dependencies (the embedded runtime cannot `import()`), and needs
+`process.env.NODE_ENV` defined by the bundler.
 
 ```tsx
 import { prerender } from "react-dom/static";
@@ -221,5 +187,5 @@ export async function render(Component, props, state) {
 }
 ```
 
-React, for one, recovers from some errors by leaving a component to the browser, and tells only `onError`: throwing
-what it reported there is what makes those failures too. A `componentStack` on what is thrown is reported with it.
+React recovers from some errors by leaving the component to the browser and tells only `onError`; throwing what it
+reported makes those failures too, and a `componentStack` on the error is reported with it.
