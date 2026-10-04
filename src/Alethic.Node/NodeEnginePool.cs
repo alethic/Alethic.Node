@@ -34,11 +34,6 @@ public sealed class NodeEnginePool : IAsyncDisposable
     readonly ILoggerFactory loggerFactory;
     readonly ILogger logger;
 
-    /// <summary>
-    /// How often an adapting pool probes each engine's event-loop delay.
-    /// </summary>
-    static readonly TimeSpan ProbeInterval = TimeSpan.FromMilliseconds(20);
-
     readonly object sync = new();
     readonly List<NodeEngine> engines = [];
     readonly LinkedList<Waiter> waiters = new();
@@ -327,8 +322,8 @@ public sealed class NodeEnginePool : IAsyncDisposable
     /// <see cref="NodeEnginePoolOptions.AdaptInterval"/> in <see cref="NodeEnginePoolMode.Adaptive"/> mode.
     /// </summary>
     /// <remarks>
-    /// An engine's delay over the window is the longest any of its probes waited, or the probe waiting now, where that
-    /// has waited longer: an engine stuck for the whole window has finished no probe to say so.
+    /// An engine's delay over the window is how long the work posted to it waited before its thread ran it, measured
+    /// from the leases themselves; see <see cref="NodeEngine.ReadWait"/>.
     /// </remarks>
     /// <param name="cancellationToken">Abandons the reading.</param>
     internal async Task AdaptAsync(CancellationToken cancellationToken = default)
@@ -344,8 +339,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
 
             foreach (var engine in engines)
             {
-                var waiting = engine.ProbeStarted == 0 ? 0 : Milliseconds(engine.ProbeStarted, now);
-                var delay = Math.Max(engine.ProbeMax, waiting);
+                var delay = engine.ReadWait(now);
 
                 var limit = AdaptiveConcurrency.Next(engine.Limit, delay, engine.Peak, options.MinConcurrencyPerEngine, options.MaxConcurrencyPerEngine, options.TargetEventLoopDelay.TotalMilliseconds);
                 if (limit != engine.Limit)
@@ -354,7 +348,6 @@ public sealed class NodeEnginePool : IAsyncDisposable
                 engine.LoopDelay = delay;
                 engine.Limit = limit;
                 engine.Peak = engine.InFlight;
-                engine.ProbeMax = 0;
             }
 
             var throughput = window > 0 ? completed / window : 0;
@@ -485,42 +478,6 @@ public sealed class NodeEnginePool : IAsyncDisposable
                 logger.LogWarning(e, "Could not stop a retired Node engine.");
             }
         });
-    }
-
-    /// <summary>
-    /// Probes an engine's event-loop delay every <see cref="ProbeInterval"/>, one probe at a time, until the engine or
-    /// the pool goes.
-    /// </summary>
-    /// <param name="engine">The engine.</param>
-    /// <param name="cancellationToken">Stops it, with the pool.</param>
-    async Task ProbeLoopAsync(NodeEngine engine, CancellationToken cancellationToken)
-    {
-        try
-        {
-            while (cancellationToken.IsCancellationRequested == false)
-            {
-                var posted = Stopwatch.GetTimestamp();
-
-                lock (sync)
-                    engine.ProbeStarted = posted;
-
-                var started = await engine.ProbeAsync();
-
-                // Only what it waited within the current window counts in it: a probe that waited out the last one,
-                // and is recorded only now, said what it had to say there.
-                lock (sync)
-                {
-                    engine.ProbeStarted = 0;
-                    engine.ProbeMax = Math.Max(engine.ProbeMax, Milliseconds(Math.Max(posted, windowStarted), started));
-                }
-
-                await Task.Delay(ProbeInterval, cancellationToken);
-            }
-        }
-        catch (Exception)
-        {
-            // The engine or the pool has gone, which is the only way out.
-        }
     }
 
     /// <summary>
@@ -740,9 +697,6 @@ public sealed class NodeEnginePool : IAsyncDisposable
             await engine.DisposeAsync();
             throw new ObjectDisposedException(GetType().Name);
         }
-
-        if (options.Mode == NodeEnginePoolMode.Adaptive)
-            _ = Task.Run(() => ProbeLoopAsync(engine, stopping.Token));
 
         // Whatever room the new engine has beyond what its starter takes goes to whoever is waiting.
         Dispatch();

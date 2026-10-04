@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -159,18 +160,6 @@ sealed class NodeEngine : IAsyncDisposable
     internal int Peak;
 
     /// <summary>
-    /// The longest a probe has waited for the engine's thread since the pool last adapted, in milliseconds. Kept under
-    /// the pool's lock.
-    /// </summary>
-    internal double ProbeMax;
-
-    /// <summary>
-    /// When the probe under way was posted, as a <see cref="System.Diagnostics.Stopwatch"/> timestamp; zero while none is.
-    /// Kept under the pool's lock.
-    /// </summary>
-    internal long ProbeStarted;
-
-    /// <summary>
     /// The engine's event-loop delay as the pool last read it, in milliseconds. Kept under the pool's lock.
     /// </summary>
     internal double LoopDelay;
@@ -188,26 +177,126 @@ sealed class NodeEngine : IAsyncDisposable
     internal bool Retiring;
 
     /// <summary>
-    /// Posts nothing to the engine's thread, and reports when it started there, as a
-    /// <see cref="System.Diagnostics.Stopwatch"/> timestamp.
+    /// Keeps the stamps: the work posted to the engine's thread and not yet started, and the longest any waited.
+    /// </summary>
+    readonly object stamps = new();
+
+    /// <summary>
+    /// When each piece of work still waiting for the engine's thread was posted, as
+    /// <see cref="System.Diagnostics.Stopwatch"/> timestamps, oldest first. Under <see cref="stamps"/>.
+    /// </summary>
+    readonly LinkedList<long> waiting = new();
+
+    /// <summary>
+    /// The longest any work waited for the engine's thread since the pool last read it, in milliseconds. Under
+    /// <see cref="stamps"/>.
+    /// </summary>
+    double waitMax;
+
+    /// <summary>
+    /// When the pool last read the wait, which began the window the wait is counted in, as a
+    /// <see cref="System.Diagnostics.Stopwatch"/> timestamp. Under <see cref="stamps"/>.
+    /// </summary>
+    long windowStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+
+    /// <summary>
+    /// The engine's event-loop delay over the window just ended, in milliseconds, and the start of the next.
     /// </summary>
     /// <remarks>
-    /// The time from posting to starting is the engine's event-loop delay, as work given to it sees it: what is posted
-    /// waits behind whatever the thread is already busy with, and only that. Taken on the engine's thread, so the trip
-    /// back to the caller is not in it.
+    /// How long work posted to the engine waited before its thread ran it: what any lease's work waits, measured from
+    /// the leases themselves, which the pool posts anyway. The thread is one, so what is posted waits behind whatever
+    /// it is busy with, and only that. Work still waiting counts for as long as it has waited so far: an engine stuck
+    /// for the whole window has started nothing that could say so. Only the part of a wait within the window counts in
+    /// it.
     /// </remarks>
-    internal Task<long> ProbeAsync()
+    /// <param name="now">The time, as a <see cref="System.Diagnostics.Stopwatch"/> timestamp.</param>
+    internal double ReadWait(long now)
     {
-        if (disposed)
-            throw new ObjectDisposedException(GetType().Name);
+        lock (stamps)
+        {
+            var delay = waitMax;
+            if (waiting.First is { } oldest)
+                delay = Math.Max(delay, Milliseconds(Math.Max(oldest.Value, windowStarted), now));
 
-        return runtime.RunAsync(() => Task.FromResult(System.Diagnostics.Stopwatch.GetTimestamp()));
+            waitMax = 0;
+            windowStarted = now;
+            return delay;
+        }
     }
 
     /// <summary>
-    /// The underlying runtime.
+    /// Stamps work as posted to the engine's thread.
     /// </summary>
-    internal NodeEmbeddingThreadRuntime Runtime => runtime;
+    LinkedListNode<long> Posted()
+    {
+        lock (stamps)
+            return waiting.AddLast(System.Diagnostics.Stopwatch.GetTimestamp());
+    }
+
+    /// <summary>
+    /// Stamps work as started on the engine's thread, and records what it waited.
+    /// </summary>
+    /// <param name="posted">Its stamp from <see cref="Posted"/>.</param>
+    void Started(LinkedListNode<long> posted)
+    {
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+
+        lock (stamps)
+        {
+            waiting.Remove(posted);
+            waitMax = Math.Max(waitMax, Milliseconds(Math.Max(posted.Value, windowStarted), now));
+        }
+    }
+
+    /// <summary>
+    /// The time between two <see cref="System.Diagnostics.Stopwatch"/> timestamps, in milliseconds.
+    /// </summary>
+    /// <param name="from">The earlier.</param>
+    /// <param name="to">The later.</param>
+    static double Milliseconds(long from, long to)
+    {
+        return Math.Max(0, to - from) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+    }
+
+    /// <summary>
+    /// Runs work on this engine's thread, stamped.
+    /// </summary>
+    /// <typeparam name="T">What the work produces.</typeparam>
+    /// <param name="work">The work.</param>
+    public Task<T> RunAsync<T>(Func<Task<T>> work)
+    {
+        if (work is null)
+            throw new ArgumentNullException(nameof(work));
+        if (disposed)
+            throw new ObjectDisposedException(GetType().Name);
+
+        var posted = Posted();
+        return runtime.RunAsync(() =>
+        {
+            Started(posted);
+            return work();
+        });
+    }
+
+    /// <summary>
+    /// Runs synchronous work on this engine's thread, stamped, blocking until it returns.
+    /// </summary>
+    /// <typeparam name="T">What the work produces.</typeparam>
+    /// <param name="work">The work.</param>
+    public T Run<T>(Func<T> work)
+    {
+        if (work is null)
+            throw new ArgumentNullException(nameof(work));
+        if (disposed)
+            throw new ObjectDisposedException(GetType().Name);
+
+        var posted = Posted();
+        return runtime.Run(() =>
+        {
+            Started(posted);
+            return work();
+        });
+    }
 
     /// <summary>
     /// Runs work against a module's exports on this engine's thread, loading the module first if
@@ -235,7 +324,7 @@ sealed class NodeEngine : IAsyncDisposable
             throw new ObjectDisposedException(GetType().Name);
 
         var path = await ResolveAsync(source, cancellationToken);
-        return await runtime.RunAsync(() => work(Require(path)));
+        return await RunAsync(() => work(Require(path)));
     }
 
     /// <summary>
@@ -254,7 +343,7 @@ sealed class NodeEngine : IAsyncDisposable
             throw new ObjectDisposedException(GetType().Name);
 
         var path = ResolveAsync(source, CancellationToken.None).GetAwaiter().GetResult();
-        return runtime.Run(() => work(Require(path)));
+        return Run(() => work(Require(path)));
     }
 
     /// <summary>
@@ -271,7 +360,7 @@ sealed class NodeEngine : IAsyncDisposable
             throw new ObjectDisposedException(GetType().Name);
 
         var path = await ResolveAsync(source, cancellationToken);
-        runtime.Run(() => Require(path).IsObject());
+        Run(() => Require(path).IsObject());
     }
 
     /// <summary>

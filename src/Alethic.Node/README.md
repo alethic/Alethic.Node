@@ -56,8 +56,9 @@ services.AddNodeEnginePool(o =>
 ```
 
 - **Each engine's limit follows its event-loop delay:** how long work posted to the engine waits before its thread
-  runs it, measured by probes the pool posts every 20 ms. A lease's latency would say little, since much of a lease is
-  spent waiting on things that leave the thread free. Over `TargetEventLoopDelay`, the limit falls by the target over
+  runs it, measured from the leases themselves, each stamped when it is posted and when the thread starts it, so an
+  idle engine measures nothing and a busy one is measured by all it does. A lease's latency would say little, since
+  much of a lease is spent waiting on things that leave the thread free. Over `TargetEventLoopDelay`, the limit falls by the target over
   the delay, by no more than half; under it, where the limit was reached, it rises by its square root. Work that only
   waits climbs to many leases an engine; work that keeps the thread busy settles near one.
 - **The number of engines is found by hill climbing:** where acquisitions waited for capacity, the pool tries one more

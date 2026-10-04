@@ -134,6 +134,33 @@ public class NodeEnginePoolAdaptiveTests
     }
 
     /// <summary>
+    /// The delay is read from the leases themselves: one posted behind busy work waits for it, and that wait is the
+    /// window's delay; a window in which nothing was posted reads nothing.
+    /// </summary>
+    [TestMethod]
+    public async Task The_delay_is_what_the_leases_waited()
+    {
+        await using var pool = Pool(max: 2);
+
+        // The engine started, so the two below queue on it rather than on its starting.
+        await pool.RunAsync(Work, exports => Task.FromResult((bool)exports.CallMethod("busy", 1)));
+        await pool.AdaptAsync();
+
+        var busy = pool.RunAsync(Work, exports => Task.FromResult((bool)exports.CallMethod("busy", 300)));
+        await Task.Delay(50);
+        var behind = pool.RunAsync(Work, exports => Task.FromResult((bool)exports.CallMethod("busy", 1)));
+        await Task.WhenAll(busy, behind);
+
+        await pool.AdaptAsync();
+        var delay = pool.GetStatistics().Engines.Single().LoopDelay;
+        Assert.IsTrue(delay is >= 150 and <= 400, $"The lease behind the busy one waited {delay} ms.");
+
+        await Task.Delay(100);
+        await pool.AdaptAsync();
+        Assert.AreEqual(0, pool.GetStatistics().Engines.Single().LoopDelay);
+    }
+
+    /// <summary>
     /// A fixed pool reads nothing and keeps its limit.
     /// </summary>
     [TestMethod]
