@@ -258,4 +258,48 @@ public class NodeEnginePoolTests
         Assert.AreEqual(2, warmed);
     }
 
+    /// <summary>
+    /// Acquisitions waiting for capacity are given it in the order they came, as it is returned.
+    /// </summary>
+    [TestMethod]
+    public async Task Waiting_acquisitions_are_served_in_turn()
+    {
+        await using var services = BuildServices(o => o.MaxConcurrencyPerEngine = 1);
+        var pool = services.GetRequiredService<NodeEnginePool>();
+
+        var held = await pool.AcquireAsync();
+        var first = pool.AcquireAsync();
+        var second = pool.AcquireAsync();
+
+        Assert.AreEqual(2, pool.GetStatistics().Queued);
+        Assert.IsFalse(first.IsCompleted);
+
+        await held.DisposeAsync();
+        var firstLease = await first;
+        Assert.IsFalse(second.IsCompleted);
+
+        await firstLease.DisposeAsync();
+        await using var secondLease = await second;
+        Assert.AreEqual(0, pool.GetStatistics().Queued);
+    }
+
+    /// <summary>
+    /// The leases an engine is configured and warmed on are outside its capacity, and give back none they did not take.
+    /// </summary>
+    [TestMethod]
+    public async Task Configuring_and_warming_engines_leaves_their_capacity_as_it_was()
+    {
+        await using var services = BuildServices(o =>
+        {
+            o.MaxConcurrencyPerEngine = 1;
+            o.AcquireTimeout = TimeSpan.FromMilliseconds(200);
+            o.ConfigureEngine = (_, lease) => lease.RunAsync(() => Task.FromResult(true));
+        });
+        var pool = services.GetRequiredService<NodeEnginePool>();
+        await pool.PrepareAsync(lease => lease.RunAsync(() => Task.FromResult(true)));
+
+        await using var held = await pool.AcquireAsync();
+        await Assert.ThrowsExactlyAsync<TimeoutException>(() => pool.AcquireAsync());
+    }
+
 }
