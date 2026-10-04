@@ -42,8 +42,26 @@ public sealed class NodeEnginePool : IAsyncDisposable
     readonly object sync = new();
     readonly List<NodeEngine> engines = [];
     readonly LinkedList<Waiter> waiters = new();
+    readonly List<NodeEngine> retiring = [];
+    readonly EngineCountClimber climber = new();
     readonly CancellationTokenSource stopping = new();
     readonly Task? adapting;
+
+    /// <summary>
+    /// How many engines the pool runs: <see cref="NodeEnginePoolOptions.EngineCount"/> where it is fixed, and where it
+    /// adapts, what it has learned, from <see cref="NodeEnginePoolOptions.MinEngineCount"/>. Under the lock.
+    /// </summary>
+    int targetEngines;
+
+    /// <summary>
+    /// The most acquisitions waiting at once since the pool last adapted. Under the lock.
+    /// </summary>
+    int queuedPeak;
+
+    /// <summary>
+    /// The leases returned since the pool last adapted. Under the lock.
+    /// </summary>
+    long completed;
 
     /// <summary>
     /// Engines being started, which count against the pool's size before they join it.
@@ -84,6 +102,10 @@ public sealed class NodeEnginePool : IAsyncDisposable
 
         if (options.MinConcurrencyPerEngine > options.MaxConcurrencyPerEngine)
             throw new ArgumentException("The least concurrency per engine is more than the most.", nameof(options));
+        if (options.Mode == NodeEnginePoolMode.Adaptive && options.MinEngineCount > options.EngineCount)
+            throw new ArgumentException("The fewest engines is more than the most.", nameof(options));
+
+        targetEngines = options.Mode == NodeEnginePoolMode.Adaptive ? options.MinEngineCount : options.EngineCount;
 
         logger = loggerFactory.CreateLogger<NodeEnginePool>();
 
@@ -116,7 +138,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
             // A free engine is always preferable to a new one: creating an engine costs a thread and
             // re-evaluating every module it will need, which is far more than queueing behind a
             // running one for the moment it takes to yield.
-            if (engines.Count + starting < options.EngineCount)
+            if (engines.Count + starting < targetEngines)
             {
                 starting++;
                 start = true;
@@ -125,6 +147,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
             {
                 waiter = new Waiter();
                 waiter.Node = waiters.AddLast(waiter);
+                queuedPeak = Math.Max(queuedPeak, waiters.Count);
             }
         }
 
@@ -227,7 +250,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
                 if (disposed)
                     throw new ObjectDisposedException(GetType().Name);
 
-                if (engines.Count + starting >= options.EngineCount)
+                if (engines.Count + starting >= targetEngines)
                     break;
 
                 starting++;
@@ -264,8 +287,25 @@ public sealed class NodeEnginePool : IAsyncDisposable
     /// <param name="engine">The engine the lease was held against.</param>
     internal void Release(NodeEngine engine)
     {
+        var stop = false;
+
         lock (sync)
+        {
             engine.InFlight--;
+            completed++;
+
+            if (engine.InFlight == 0)
+            {
+                engine.IdleSince = Stopwatch.GetTimestamp();
+
+                // A retired engine stops with the last lease it held.
+                if (engine.Retiring && retiring.Remove(engine))
+                    stop = true;
+            }
+        }
+
+        if (stop)
+            Stop(engine);
 
         Dispatch();
     }
@@ -279,12 +319,15 @@ public sealed class NodeEnginePool : IAsyncDisposable
     /// has waited longer: an engine stuck for the whole window has finished no probe to say so.
     /// </remarks>
     /// <param name="cancellationToken">Abandons the reading.</param>
-    internal Task AdaptAsync(CancellationToken cancellationToken = default)
+    internal async Task AdaptAsync(CancellationToken cancellationToken = default)
     {
         var now = Stopwatch.GetTimestamp();
+        var start = false;
+        NodeEngine? stop = null;
 
         lock (sync)
         {
+            var window = Milliseconds(windowStarted, now) / 1000;
             windowStarted = now;
 
             foreach (var engine in engines)
@@ -301,11 +344,135 @@ public sealed class NodeEnginePool : IAsyncDisposable
                 engine.Peak = engine.InFlight;
                 engine.ProbeMax = 0;
             }
+
+            var throughput = window > 0 ? completed / window : 0;
+            var saturated = queuedPeak > 0;
+            completed = 0;
+            queuedPeak = waiters.Count;
+
+            switch (climber.Next(engines.Count + starting, options.EngineCount, throughput, saturated))
+            {
+                case EngineCountDecision.Grow:
+                    logger.LogDebug("Trying another Node engine: {Throughput:0.0} leases a second with {Count}, and acquisitions waiting.", throughput, engines.Count);
+                    targetEngines = Math.Min(options.EngineCount, targetEngines + 1);
+                    if (engines.Count + starting < targetEngines)
+                    {
+                        starting++;
+                        start = true;
+                    }
+
+                    break;
+
+                case EngineCountDecision.Shrink:
+                    logger.LogDebug("Retiring the Node engine on trial: {Throughput:0.0} leases a second with {Count} is no better.", throughput, engines.Count);
+                    targetEngines = Math.Max(options.MinEngineCount, targetEngines - 1);
+                    stop = RetireLeastLoaded();
+                    break;
+
+                default:
+                    if (climber.OnTrial == false && Idlest(now) is { } idle)
+                    {
+                        logger.LogDebug("Retiring an idle Node engine.");
+                        targetEngines = Math.Max(options.MinEngineCount, targetEngines - 1);
+                        stop = Retire(idle);
+                    }
+
+                    break;
+            }
         }
 
-        // A limit that rose has room for whoever is waiting.
+        if (stop is not null)
+            Stop(stop);
+
+        if (start)
+        {
+            try
+            {
+                await StartAndAddAsync(cancellationToken);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                logger.LogWarning(e, "Could not start another Node engine.");
+            }
+        }
+
+        // A limit that rose, or an engine that started, has room for whoever is waiting.
         Dispatch();
-        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// The engine longest idle past <see cref="NodeEnginePoolOptions.EngineIdleTimeout"/>, where the pool runs more
+    /// than its fewest; nothing otherwise. Under the lock.
+    /// </summary>
+    /// <param name="now">The time, as a <see cref="Stopwatch"/> timestamp.</param>
+    NodeEngine? Idlest(long now)
+    {
+        if (engines.Count <= options.MinEngineCount)
+            return null;
+
+        NodeEngine? idlest = null;
+
+        foreach (var engine in engines)
+            if (engine.InFlight == 0 && Milliseconds(engine.IdleSince, now) >= options.EngineIdleTimeout.TotalMilliseconds)
+                if (idlest is null || engine.IdleSince < idlest.IdleSince)
+                    idlest = engine;
+
+        return idlest;
+    }
+
+    /// <summary>
+    /// Retires the engine carrying the least, the newest of those carrying as little, where the pool runs more than its
+    /// fewest. Under the lock.
+    /// </summary>
+    /// <returns>The engine, where it holds no lease and may be stopped now.</returns>
+    NodeEngine? RetireLeastLoaded()
+    {
+        if (engines.Count <= options.MinEngineCount)
+            return null;
+
+        var least = engines[engines.Count - 1];
+        for (var i = engines.Count - 2; i >= 0; i--)
+            if (engines[i].InFlight < least.InFlight)
+                least = engines[i];
+
+        return Retire(least);
+    }
+
+    /// <summary>
+    /// Takes an engine out of the pool: it takes no more leases, and stops once the last it holds is returned. Under the
+    /// lock.
+    /// </summary>
+    /// <param name="engine">The engine.</param>
+    /// <returns>The engine, where it holds no lease and may be stopped now.</returns>
+    NodeEngine? Retire(NodeEngine engine)
+    {
+        engines.Remove(engine);
+        engine.Retiring = true;
+
+        if (engine.InFlight == 0)
+            return engine;
+
+        retiring.Add(engine);
+        return null;
+    }
+
+    /// <summary>
+    /// Stops a retired engine, in the background.
+    /// </summary>
+    /// <param name="engine">The engine.</param>
+    void Stop(NodeEngine engine)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await engine.DisposeAsync();
+            }
+            catch (Exception e)
+            {
+                logger.LogWarning(e, "Could not stop a retired Node engine.");
+            }
+        });
     }
 
     /// <summary>
@@ -541,6 +708,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
         // is kept off whichever thread happened to ask for it.
         var engine = await Task.Run(() => new NodeEngine(platform, options.BaseDirectory ?? AppContext.BaseDirectory, engineLogger), cancellationToken);
         engine.Limit = options.MaxConcurrencyPerEngine;
+        engine.IdleSince = Stopwatch.GetTimestamp();
 
         // Before it joins the pool, so nothing can be handed an engine whose setup has not run.
         // A failure disposes it rather than leaving a live runtime nothing owns.
@@ -595,7 +763,14 @@ public sealed class NodeEnginePool : IAsyncDisposable
         if (adapting is not null)
             await adapting;
 
-        foreach (var engine in Snapshot())
+        NodeEngine[] retired;
+        lock (sync)
+        {
+            retired = [.. retiring];
+            retiring.Clear();
+        }
+
+        foreach (var engine in Snapshot().Concat(retired))
             await engine.DisposeAsync();
 
         stopping.Dispose();

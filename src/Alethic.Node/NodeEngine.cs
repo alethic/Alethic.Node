@@ -176,6 +176,18 @@ sealed class NodeEngine : IAsyncDisposable
     internal double LoopDelay;
 
     /// <summary>
+    /// When the engine last held no lease, as a <see cref="System.Diagnostics.Stopwatch"/> timestamp. Kept under the
+    /// pool's lock.
+    /// </summary>
+    internal long IdleSince;
+
+    /// <summary>
+    /// Whether the pool has retired the engine: it takes no more leases, and stops once the last it holds is returned.
+    /// Kept under the pool's lock.
+    /// </summary>
+    internal bool Retiring;
+
+    /// <summary>
     /// Posts nothing to the engine's thread, and reports when it started there, as a
     /// <see cref="System.Diagnostics.Stopwatch"/> timestamp.
     /// </summary>

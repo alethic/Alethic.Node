@@ -10,6 +10,8 @@ public class NodeEnginePoolOptions
 {
 
     int engineCount = 1;
+    int minEngineCount = 1;
+    TimeSpan engineIdleTimeout = TimeSpan.FromSeconds(30);
     int minConcurrencyPerEngine = 1;
     int maxConcurrencyPerEngine = 4;
     TimeSpan targetEventLoopDelay = TimeSpan.FromMilliseconds(40);
@@ -21,18 +23,47 @@ public class NodeEnginePoolOptions
     public NodeEnginePoolMode Mode { get; set; } = NodeEnginePoolMode.Fixed;
 
     /// <summary>
-    /// Number of engines to run. Defaults to one.
+    /// Number of engines to run. Defaults to one. In <see cref="NodeEnginePoolMode.Adaptive"/> mode, the most the pool
+    /// may run.
     /// </summary>
     /// <remarks>
     /// This must track the CPU the process is actually entitled to, and deliberately has no derived
     /// default: the processor count reports the host's cores rather than a container's quota, so
     /// deriving one misleads badly under orchestration. Spare CPU with too few engines goes unused,
     /// and engines beyond the available CPU only contend with each other.
+    ///
+    /// An adaptive pool finds out for itself how many of them are worth running, but never more than this, for the
+    /// same reason.
     /// </remarks>
     public int EngineCount
     {
         get => engineCount;
         set => engineCount = value > 0 ? value : throw new ArgumentOutOfRangeException(nameof(value), "Engine count must be greater than zero.");
+    }
+
+    /// <summary>
+    /// In <see cref="NodeEnginePoolMode.Adaptive"/> mode, the fewest engines the pool runs once it has started them.
+    /// Defaults to one.
+    /// </summary>
+    /// <remarks>
+    /// The pool starts this many as it needs them, as a fixed pool does. Above it, it adds an engine only where
+    /// acquisitions have had to wait for capacity, and keeps it only where it raised how many leases the pool
+    /// completes; it retires engines idle for <see cref="EngineIdleTimeout"/> back down to this.
+    /// </remarks>
+    public int MinEngineCount
+    {
+        get => minEngineCount;
+        set => minEngineCount = value > 0 ? value : throw new ArgumentOutOfRangeException(nameof(value), "Engine count must be greater than zero.");
+    }
+
+    /// <summary>
+    /// In <see cref="NodeEnginePoolMode.Adaptive"/> mode, how long an engine holds no lease before the pool retires it,
+    /// where it runs more than <see cref="MinEngineCount"/>. Defaults to thirty seconds.
+    /// </summary>
+    public TimeSpan EngineIdleTimeout
+    {
+        get => engineIdleTimeout;
+        set => engineIdleTimeout = value > TimeSpan.Zero ? value : throw new ArgumentOutOfRangeException(nameof(value), "The idle timeout must be greater than zero.");
     }
 
     /// <summary>
