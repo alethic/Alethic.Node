@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -185,6 +186,10 @@ public class NodeEnginePoolAdaptiveTests
     /// Work still waiting when the window closes counts for what it has waited so far, and only the rest of its wait
     /// counts in the next window: an engine stuck for a whole window shows up in it.
     /// </summary>
+    /// <remarks>
+    /// Measured against the moments things happened rather than the moments they were meant to: on a slow machine the
+    /// window may close late, and what each window should hold follows from when it did.
+    /// </remarks>
     [TestMethod]
     public async Task Work_still_waiting_counts_in_the_window_it_waited_in()
     {
@@ -195,18 +200,35 @@ public class NodeEnginePoolAdaptiveTests
 
         var busy = pool.RunAsync(Work, exports => Task.FromResult((bool)exports.CallMethod("busy", 500)));
         await Task.Delay(50);
-        var behind = pool.RunAsync(Work, exports => Task.FromResult((bool)exports.CallMethod("busy", 1)));
 
-        // The window closes with the busy work under way and the other still waiting behind it.
+        // When the work behind was posted, at the latest, and when it started, from the work itself.
+        long behindStarted = 0;
+        var behindPosted = Stopwatch.GetTimestamp();
+        var behind = pool.RunAsync(Work, exports =>
+        {
+            behindStarted = Stopwatch.GetTimestamp();
+            return Task.FromResult((bool)exports.CallMethod("busy", 1));
+        });
+
+        // The window closes with the busy work under way and, with any luck, the other still waiting behind it.
         await Task.Delay(200);
         await pool.AdaptAsync();
+        var closed = Stopwatch.GetTimestamp();
         var soFar = pool.GetStatistics().Engines.Single().LoopDelay;
-        Assert.IsTrue(soFar is >= 100 and <= 400, $"The work still waiting counted {soFar} ms.");
 
         await Task.WhenAll(busy, behind);
         await pool.AdaptAsync();
         var rest = pool.GetStatistics().Engines.Single().LoopDelay;
-        Assert.IsTrue(rest is >= 100 and <= 450, $"The rest of the wait counted {rest} ms.");
+
+        // What the two windows should have held: the wait up to the close, and the wait from the close to the start,
+        // each no more than it could have been and no less than it must have been, within the clocks' agreement.
+        var ms = 1000.0 / Stopwatch.Frequency;
+        var expectedSoFar = Math.Max(0, (Math.Min(closed, behindStarted) - behindPosted) * ms);
+        var expectedRest = Math.Max(0, (behindStarted - closed) * ms);
+
+        Assert.IsTrue(Math.Abs(soFar - expectedSoFar) <= 30 + expectedSoFar * 0.1, $"The work still waiting counted {soFar:0} ms where it had waited {expectedSoFar:0} ms.");
+        Assert.IsTrue(Math.Abs(rest - expectedRest) <= 30 + expectedRest * 0.1, $"The rest of the wait counted {rest:0} ms where it was {expectedRest:0} ms.");
+        Assert.IsTrue(soFar + rest >= 300, $"The two windows counted {soFar:0} and {rest:0} ms of a wait of some 450.");
     }
 
     /// <summary>

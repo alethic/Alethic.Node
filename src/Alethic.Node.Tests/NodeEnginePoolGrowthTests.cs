@@ -169,25 +169,28 @@ public class NodeEnginePoolGrowthTests
             return true;
         }
 
-        // One window of exactly the given calls, the same length as every other.
+        // One window of exactly the given calls, the same length as every other as the pool measures it: from the
+        // adapting that opened it, whatever happened between that and this.
+        var opened = 0L;
         async Task WindowAsync(int calls)
         {
-            var began = Stopwatch.GetTimestamp();
             var before = Volatile.Read(ref completed);
             dependency.Release(calls);
 
             while (Volatile.Read(ref completed) < before + calls)
                 await Task.Delay(10);
 
-            var left = TimeSpan.FromMilliseconds(500) - TimeSpan.FromSeconds((Stopwatch.GetTimestamp() - began) / (double)Stopwatch.Frequency);
+            var left = TimeSpan.FromMilliseconds(500) - TimeSpan.FromSeconds((Stopwatch.GetTimestamp() - opened) / (double)Stopwatch.Frequency);
             if (left > TimeSpan.Zero)
                 await Task.Delay(left);
 
             await pool.AdaptAsync();
+            opened = Stopwatch.GetTimestamp();
         }
 
         await pool.RunAsync(() => Task.FromResult(true));
         await pool.AdaptAsync();
+        opened = Stopwatch.GetTimestamp();
 
         using var stop = new CancellationTokenSource();
         var load = LoadAsync(8, () => pool.RunAsync(Call), stop.Token);

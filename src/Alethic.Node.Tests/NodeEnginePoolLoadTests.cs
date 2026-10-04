@@ -85,16 +85,17 @@ public class NodeEnginePoolLoadTests
         Assert.IsTrue(fallen.LoopDelay > 40, $"The event loop was only {fallen.LoopDelay:0} ms late.");
 
         // Then 32 callers waiting 30 ms each: the loop keeps up, and the limit is what holds the callers back, so it
-        // rises every window. A second of it first, at the fallen limit, for the throughput there.
+        // rises every window. A second of it first, at the fallen limit, for the throughput there; three while it
+        // rises; and a second and a half at the risen limit, for the throughput there.
         var before = await LoadAsync(pool, "fetch", 30, callers: 32, TimeSpan.FromSeconds(1));
-        var after = await LoadAsync(pool, "fetch", 30, callers: 32, TimeSpan.FromSeconds(4.5));
+        await LoadAsync(pool, "fetch", 30, callers: 32, TimeSpan.FromSeconds(3));
+        var after = await LoadAsync(pool, "fetch", 30, callers: 32, TimeSpan.FromSeconds(1.5));
         var risen = pool.GetStatistics().Engines.Single();
         Assert.IsTrue(risen.Limit >= fallen.Limit + 2, $"The limit only rose from {fallen.Limit} to {risen.Limit}, with the event loop {risen.LoopDelay:0} ms late.");
         Assert.IsTrue(risen.LoopDelay <= 40, $"The event loop was {risen.LoopDelay:0} ms late under waiting work.");
 
-        // And the rise bought throughput: renders a second over the rest of the phase, half of which ran under lower
-        // limits still, against the first second at the fallen limit.
-        Assert.IsTrue(after / 4.5 > before * 1.5, $"{before} renders in the first second, then {after} in 4.5 s, at a limit that rose from {fallen.Limit} to {risen.Limit}.");
+        // And the rise bought throughput: renders a second at the risen limit against renders a second at the fallen one.
+        Assert.IsTrue(after / 1.5 > before * 1.5, $"{before} renders a second at a limit of {fallen.Limit}, then {after / 1.5:0} at {risen.Limit}.");
     }
 
     /// <summary>
