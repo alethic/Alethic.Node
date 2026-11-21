@@ -1,0 +1,6 @@
+<Project>
+
+    <!-- A packages.config project imports build, not buildTransitive: the same checks, imported once. -->
+    <Import Project="..\buildTransitive\Alethic.Node.targets" Condition=" '$(AlethicNodeTargetsImported)' != 'true' " />
+
+</Project>

@@ -12,7 +12,12 @@ dotnet add package Microsoft.JavaScript.LibNode.win-x64    # the native runtime:
 The native runtime is LibNode 26 (Node.js 26), `Microsoft.JavaScript.LibNode.<rid>` 26.1.2 or later with
 node-api-dotnet 0.9.44 or later: 64-bit only (x64, arm64; there is no x86 build), Windows with the Universal C Runtime,
 Linux with glibc 2.35 or later (not Alpine or other musl distributions), macOS 13.5 or later. An older libnode, such
-as 20.1800, ends the process when started; on Windows the pool refuses it first, with an exception naming the file.
+as 20.1800, ends the process when started, so the build refuses one (error ALNODE002), and on Windows the pool
+refuses it again at run time, with an exception naming the file.
+
+To take every platform's runtime with one reference instead, add `Microsoft.JavaScript.NodeApi.Embedding` (0.9.44 or
+later) in place of the LibNode packages. It carries all six, x64 and arm64 on Windows, Linux and macOS: about 280 MB
+of packages, and over 800 MB in the output of any build without a runtime identifier.
 
 ## Use
 
