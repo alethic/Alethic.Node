@@ -35,7 +35,8 @@ public class NodeEnginePoolGrowthTests
     /// <param name="idle">How long an engine holds nothing before it is retired.</param>
     /// <param name="memoryLoad">The memory load the pool reads; plenty of room where not given, since the machine's
     /// memory is not what these test.</param>
-    static NodeEnginePool Pool(TimeSpan idle, Func<double?>? memoryLoad = null)
+    /// <param name="clock">The clock the pool times its throughput windows by; the stopwatch where not given.</param>
+    static NodeEnginePool Pool(TimeSpan idle, Func<double?>? memoryLoad = null, Func<long>? clock = null)
     {
         return new NodeEnginePool(new NodeEnginePoolOptions()
         {
@@ -48,6 +49,7 @@ public class NodeEnginePoolGrowthTests
             EngineIdleTimeout = idle,
             AdaptInterval = Timeout.InfiniteTimeSpan,
             ReadMemoryLoad = memoryLoad ?? (() => 0.5),
+            ReadWindowClock = clock,
         }, NullLoggerFactory.Instance, new NoServices());
     }
 
@@ -195,54 +197,59 @@ public class NodeEnginePoolGrowthTests
     /// </summary>
     /// <remarks>
     /// The dependency lets through exactly as many calls a window as the test gives it permits for, and every window is
-    /// the same length, so the throughput with two engines is the throughput with one to within the windows' lengths,
-    /// whatever the machine: no engine could do more, and the climber must see that.
+    /// exactly a second long as the pool measures it, on a clock the test moves on by a second at each window's end, so
+    /// the throughput with two engines is the throughput with one, whatever the machine: no engine could do more, and the
+    /// climber must see that. On the stopwatch, padding each window to a second leaves it as long as the padding
+    /// overshoots, and on a machine short of cores that is as much as the tenth the climber asks a new engine for.
     /// </remarks>
     [TestMethod]
     public async Task A_second_engine_that_does_not_pay_goes_again()
     {
-        await using var pool = Pool(idle: TimeSpan.FromMinutes(10));
+        var clock = Stopwatch.GetTimestamp();
+        await using var pool = Pool(idle: TimeSpan.FromMinutes(10), clock: () => Interlocked.Read(ref clock));
 
         // A dependency with a capacity of its own, which more engines cannot get more out of.
         using var dependency = new SemaphoreSlim(0);
-        var completed = 0;
 
         async Task<bool> Call()
         {
             await dependency.WaitAsync();
-            Interlocked.Increment(ref completed);
             return true;
         }
 
-        // One window of exactly the given calls, the same length as every other as the pool measures it: from the
-        // adapting that opened it, whatever happened between that and this. The calls returned is not the leases
-        // released, which is what the pool counts and which follow a moment after, so the window settles before it
-        // closes; and it is long enough that a slow machine's round trips fit in it with the settling to spare.
-        var opened = 0L;
+        // The calls whose leases are back with the pool, which is what the pool counts: a call returns from the pool
+        // only once its lease is.
+        var returned = 0;
+        async Task CallAsync()
+        {
+            await pool.RunAsync(Call);
+            Interlocked.Increment(ref returned);
+        }
+
+        // One window of exactly the given calls, and a second long, closed once their leases are all back.
         async Task WindowAsync(int calls)
         {
-            var before = Volatile.Read(ref completed);
+            var before = Volatile.Read(ref returned);
             dependency.Release(calls);
 
-            while (Volatile.Read(ref completed) < before + calls)
+            while (Volatile.Read(ref returned) < before + calls)
                 await Task.Delay(10);
 
-            await Task.Delay(150);
+            await AdaptAsync();
+        }
 
-            var left = TimeSpan.FromMilliseconds(1000) - TimeSpan.FromSeconds((Stopwatch.GetTimestamp() - opened) / (double)Stopwatch.Frequency);
-            if (left > TimeSpan.Zero)
-                await Task.Delay(left);
-
-            await pool.AdaptAsync();
-            opened = Stopwatch.GetTimestamp();
+        // The window ends a second after it began, as the pool measures it.
+        Task AdaptAsync()
+        {
+            Interlocked.Add(ref clock, Stopwatch.Frequency);
+            return pool.AdaptAsync();
         }
 
         await pool.RunAsync(() => Task.FromResult(true));
-        await pool.AdaptAsync();
-        opened = Stopwatch.GetTimestamp();
+        await AdaptAsync();
 
         using var stop = new CancellationTokenSource();
-        var load = LoadAsync(8, () => pool.RunAsync(Call), stop.Token);
+        var load = LoadAsync(8, CallAsync, stop.Token);
 
         // The baseline, with acquisitions waiting behind the leases held up at the dependency.
         await WindowAsync(24);
