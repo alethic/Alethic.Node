@@ -1,0 +1,31 @@
+<Project>
+
+    <!-- LibNode 26 is 64-bit alone: a 32-bit build of the application would fail to load it at run time. Said at build
+         time instead, as Microsoft.JavaScript.NodeApi.Embedding does. A .NET Framework executable built for AnyCPU
+         prefers 32 bits unless told otherwise. -->
+    <Target Name="AlethicNodeWarnBitness" AfterTargets="CoreCompile"
+        Condition=" '$(PlatformTarget)' == 'x86' Or ('$(TargetFrameworkIdentifier)' == '.NETFramework' And '$(PlatformTarget)' == 'AnyCPU' And '$(Prefer32Bit)' == 'true') ">
+        <Warning Code="ALNODE001"
+            Text="Alethic.Node runs LibNode, which has no x86 build: build for x64 or arm64, or set Prefer32Bit to false. A 32-bit process needs a 32-bit libnode of its own, named by LibNodePath." />
+    </Target>
+
+    <!-- The node-api-dotnet this package depends on is written for LibNode 26's embedding calls, and an older libnode does
+         not fail them: it ends the process when started, with nothing raised. The application chooses its LibNode
+         packages, one per platform it deploys to, so an older one is refused here, as the build resolved it: in the
+         NuGet assets file of the PackageReference project, SDK-style or not. The packages are matched by name, the
+         meta-package and each platform's; a major version below 26 is refused. -->
+    <PropertyGroup>
+        <AlethicNodeLibNodePattern>(?i)Microsoft\.JavaScript\.LibNode(?:\.[a-z0-9-]+)?/(?:\d|1\d|2[0-5])\.[0-9.]+</AlethicNodeLibNodePattern>
+    </PropertyGroup>
+
+    <Target Name="AlethicNodeCheckLibNodeVersion" BeforeTargets="CoreCompile">
+        <PropertyGroup>
+            <_AlethicNodeAssetsFile>$(ProjectAssetsFile)</_AlethicNodeAssetsFile>
+            <_AlethicNodeAssetsFile Condition=" '$(_AlethicNodeAssetsFile)' == '' And '$(MSBuildProjectExtensionsPath)' != '' ">$(MSBuildProjectExtensionsPath)project.assets.json</_AlethicNodeAssetsFile>
+            <_AlethicNodeOldLibNode Condition=" '$(_AlethicNodeAssetsFile)' != '' And Exists('$(_AlethicNodeAssetsFile)') ">$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(_AlethicNodeAssetsFile)')), '$(AlethicNodeLibNodePattern)').Value)</_AlethicNodeOldLibNode>
+        </PropertyGroup>
+        <Error Code="ALNODE002" Condition=" '$(_AlethicNodeOldLibNode)' != '' "
+            Text="Alethic.Node needs LibNode 26 or later, and the build resolved $(_AlethicNodeOldLibNode.Replace('/', ' ')): reference Microsoft.JavaScript.LibNode.&lt;rid&gt; 26.1.2 or later. An older libnode does not answer the embedding calls node-api-dotnet makes, and ends the process when started." />
+    </Target>
+
+</Project>

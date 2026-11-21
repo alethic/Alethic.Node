@@ -23,7 +23,9 @@ sealed class NodeEngine : IAsyncDisposable
     /// runtime, and it is Node's own: it resolves paths and packages by Node's rules and caches what
     /// it loads in <c>require.cache</c>, keyed by resolved filename. That is the whole of this
     /// library's module handling — a module gets one instance per runtime, with its module scope
-    /// intact, because that is what <c>require</c> means.
+    /// intact, because that is what <c>require</c> means. Since Node 22.12 it loads an ES module too,
+    /// where the module's graph has no top-level await; one that has is imported instead, by
+    /// <see cref="RunAsync{T}(NodeModuleSource, Func{JSValue, Task{T}}, CancellationToken)"/>.
     ///
     /// The rejection handler is not optional. A promise rejection with no handler yet attached — a
     /// gap that async .NET callers cannot always avoid — is fatal by Node's default, and here fatal
@@ -135,6 +137,12 @@ sealed class NodeEngine : IAsyncDisposable
 
     readonly NodeEmbeddingThreadRuntime runtime;
     readonly ILogger logger;
+
+    /// <summary>
+    /// The modules <c>require</c> refused as ES modules that await at their top level, by path, which are imported
+    /// instead. On the engine's thread alone.
+    /// </summary>
+    readonly HashSet<string> imported = new(StringComparer.Ordinal);
 
     bool disposed;
 
@@ -428,6 +436,12 @@ sealed class NodeEngine : IAsyncDisposable
     /// fetched inside the same trip onto the thread that uses them. Handing a
     /// <see cref="JSReference"/> back instead would mean a strong reference per call, kept alive
     /// against a module the runtime is already keeping alive, and nothing to dispose it.
+    ///
+    /// An ES module whose graph awaits at its top level is one <c>require</c> refuses, as it cannot
+    /// be evaluated synchronously. That one is imported, and the work is given its namespace once
+    /// the import settles; Node's module loader keeps it, one instance per runtime, as
+    /// <c>require.cache</c> keeps the rest. The engine remembers which modules those are, so that
+    /// each is refused once.
     /// </remarks>
     /// <typeparam name="T"></typeparam>
     /// <param name="source"></param>
@@ -443,12 +457,16 @@ sealed class NodeEngine : IAsyncDisposable
             throw new ObjectDisposedException(GetType().Name);
 
         var path = await ResolveAsync(source, cancellationToken);
-        return await RunAsync(() => work(Require(path)));
+        return await RunAsync(() => LoadAsync(path, work));
     }
 
     /// <summary>
     /// Runs synchronous work against a module's exports on this engine's thread.
     /// </summary>
+    /// <remarks>
+    /// Loading is synchronous here, so an ES module that awaits at its top level fails with Node's
+    /// <c>ERR_REQUIRE_ASYNC_MODULE</c>: it can only be had asynchronously.
+    /// </remarks>
     /// <typeparam name="T"></typeparam>
     /// <param name="source"></param>
     /// <param name="work"></param>
@@ -479,7 +497,7 @@ sealed class NodeEngine : IAsyncDisposable
             throw new ObjectDisposedException(GetType().Name);
 
         var path = await ResolveAsync(source, cancellationToken);
-        Run(() => Require(path).IsObject());
+        await RunAsync(() => LoadAsync(path, exports => Task.FromResult(exports.IsObject())));
     }
 
     /// <summary>
@@ -502,6 +520,74 @@ sealed class NodeEngine : IAsyncDisposable
     /// </summary>
     /// <param name="path"></param>
     static JSValue Require(string path) => JSValue.Global["require"].Call(JSValue.Undefined, path);
+
+    /// <summary>
+    /// Loads a module, by <c>require</c> or, for an ES module that awaits at its top level, by <c>import()</c>, and runs
+    /// work against its exports. On the engine's thread.
+    /// </summary>
+    /// <typeparam name="T">What the work produces.</typeparam>
+    /// <param name="path">The module's path.</param>
+    /// <param name="work">The work, given the exports, or the namespace of an imported module.</param>
+    async Task<T> LoadAsync<T>(string path, Func<JSValue, Task<T>> work)
+    {
+        if (imported.Contains(path))
+            return await ImportModuleAsync(path, work);
+
+        JSValue exports;
+
+        try
+        {
+            exports = Require(path);
+        }
+        catch (JSException e) when (IsAsyncModule(e) && CanImport())
+        {
+            logger.LogDebug("Importing module {Path}: it awaits at its top level, so require cannot load it.", path);
+            imported.Add(path);
+            return await ImportModuleAsync(path, work);
+        }
+
+        return await work(exports);
+    }
+
+    /// <summary>
+    /// Imports a module with <c>import()</c>, and runs work against its namespace once it settles. On the engine's
+    /// thread.
+    /// </summary>
+    /// <remarks>
+    /// Through the <c>import</c> function node-api-dotnet gives the runtime, which is Node's own <c>import()</c> called
+    /// from a CommonJS module on disk, <c>import.cjs</c> beside its assembly: a script run as text has no module to
+    /// resolve from, and Node refuses it a dynamic import.
+    /// </remarks>
+    /// <typeparam name="T">What the work produces.</typeparam>
+    /// <param name="path">The module's path.</param>
+    /// <param name="work">The work.</param>
+    static async Task<T> ImportModuleAsync<T>(string path, Func<JSValue, Task<T>> work)
+    {
+        var namespaceObject = await ((JSPromise)JSValue.Global["import"].Call(JSValue.Undefined, path)).AsTask();
+        return await work(namespaceObject);
+    }
+
+    /// <summary>
+    /// Whether <c>require</c> refused a module as an ES module that awaits at its top level. On the engine's thread.
+    /// </summary>
+    /// <param name="e">What <c>require</c> threw.</param>
+    static bool IsAsyncModule(JSException e)
+    {
+        try
+        {
+            return e.Error is { } error && error.Value.IsObject() && (string)error.Value["code"] == "ERR_REQUIRE_ASYNC_MODULE";
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Whether the runtime has the <c>import</c> function <see cref="ImportModuleAsync"/> calls: node-api-dotnet gives it
+    /// one where it finds <c>import.cjs</c>, which its package deploys beside its assembly. On the engine's thread.
+    /// </summary>
+    static bool CanImport() => JSValue.Global["import"].IsFunction();
 
     /// <summary>
     /// Posts work to the engine's thread, quietly dropping it if the engine is gone.

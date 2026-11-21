@@ -42,7 +42,7 @@ static class NodeRuntimeHost
     /// Returns the process-wide platform, creating it from the given library on first use.
     /// </summary>
     /// <param name="libNodePath">The library, or <see langword="null"/> for node-api-dotnet to find.</param>
-    /// <exception cref="InvalidOperationException"></exception>
+    /// <exception cref="InvalidOperationException">The platform is from another library, or the library is too old.</exception>
     public static NodeEmbeddingPlatform GetOrCreate(string? libNodePath)
     {
         lock (sync)
@@ -53,6 +53,8 @@ static class NodeRuntimeHost
             if (IsLoaded(libNodePath))
                 throw new InvalidOperationException(
                     $"The Node runtime '{libNodePath ?? LibNodeLocator.FileName}' is already loaded in this process, by something other than this AppDomain, such as an earlier one. Node cannot be started a second time in one process.");
+
+            LibNodeLocator.Verify(libNodePath);
 
             var platform = new NodeEmbeddingPlatform(new NodeEmbeddingPlatformSettings() { LibNodePath = libNodePath });
             loadedFrom = libNodePath;

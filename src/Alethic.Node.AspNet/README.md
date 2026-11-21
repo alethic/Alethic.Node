@@ -11,6 +11,9 @@ dotnet add package Alethic.Node.AspNet
 dotnet add package Microsoft.JavaScript.LibNode.win-x64
 ```
 
+LibNode 26 is 64-bit only: the site runs in a 64-bit application pool (`Enable 32-Bit Applications` off), and under
+IIS Express in its 64-bit edition.
+
 ## The pool
 
 `AspNetNode.Pool` works with no setup: one engine. To change it, the `alethic.node` section in `web.config`:
@@ -51,7 +54,7 @@ protected void Application_Start(object sender, EventArgs e)
 }
 ```
 
-The application is a CommonJS bundle whose default export has a `fetch(request, env, ctx)` function;
+The application is a CommonJS or ES module whose default export has a `fetch(request, env, ctx)` function;
 [Alethic.Node.Http](https://www.nuget.org/packages/Alethic.Node.Http) says what it sees, and the same bundle serves
 from ASP.NET Core. Its response is the site's, status included. Requests no route matches go on to the site's pages;
 a catch-all route needs `RouteTable.Routes.Ignore("{resource}.axd/{*pathInfo}")` ahead of it.

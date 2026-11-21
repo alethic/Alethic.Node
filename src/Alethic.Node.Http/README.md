@@ -5,7 +5,7 @@ The protocol by which a JavaScript application's `fetch` handler is served from 
 [Alethic.Node.AspNet](https://www.nuget.org/packages/Alethic.Node.AspNet), so one application is served by either.
 Referenced through them; documented here because it is what the application sees.
 
-The application is a CommonJS bundle whose default export has a `fetch` function, or is one:
+The application is a CommonJS or ES module whose default export has a `fetch` function, or is one:
 
 ```js
 export default {

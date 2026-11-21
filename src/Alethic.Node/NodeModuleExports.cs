@@ -3,7 +3,7 @@ using Microsoft.JavaScript.NodeApi;
 namespace Alethic.Node;
 
 /// <summary>
-/// Reading a CommonJS module's exports.
+/// Reading a module's exports, CommonJS or ES.
 /// </summary>
 public static class NodeModuleExports
 {
@@ -14,7 +14,8 @@ public static class NodeModuleExports
     /// </summary>
     /// <remarks>
     /// Bundlers disagree — some set <c>module.exports</c> outright, others hang a <c>default</c>
-    /// property off it — and both shapes have to serve. Centralized here so a request handler and a route
+    /// property off it — and both shapes have to serve. An ES module's namespace has its default export
+    /// as <c>default</c>, as the second shape does. Centralized here so a request handler and a route
     /// provider reading the same bundle agree on what its default export is.
     ///
     /// Must be called on the engine's thread.
