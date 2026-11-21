@@ -132,6 +132,12 @@ public class NodeEnginePoolOptions
     internal Func<double?>? ReadMemoryLoad { get; set; }
 
     /// <summary>
+    /// Reads the clock the pool times its throughput windows by, for tests, as <see cref="System.Diagnostics.Stopwatch"/>
+    /// timestamps: the stopwatch, where unset.
+    /// </summary>
+    internal Func<long>? ReadWindowClock { get; set; }
+
+    /// <summary>
     /// In <see cref="NodeEnginePoolMode.Adaptive"/> mode, how often the pool reads its engines and adapts its limits.
     /// Defaults to one second. <see cref="System.Threading.Timeout.InfiniteTimeSpan"/> stops it adapting by itself.
     /// </summary>

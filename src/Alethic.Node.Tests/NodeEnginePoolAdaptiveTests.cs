@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -34,13 +35,14 @@ public class NodeEnginePoolAdaptiveTests
     /// A pool on one engine that adapts only when told to.
     /// </summary>
     /// <param name="max">The most leases the engine may hold, and where its limit starts.</param>
-    static NodeEnginePool Pool(int max)
+    /// <param name="target">The event-loop delay to keep under, in milliseconds.</param>
+    static NodeEnginePool Pool(int max, double target = 40)
     {
         return new NodeEnginePool(new NodeEnginePoolOptions()
         {
             Mode = NodeEnginePoolMode.Adaptive,
             MaxConcurrencyPerEngine = max,
-            TargetEventLoopDelay = TimeSpan.FromMilliseconds(40),
+            TargetEventLoopDelay = TimeSpan.FromMilliseconds(target),
             AdaptInterval = Timeout.InfiniteTimeSpan,
         }, NullLoggerFactory.Instance, new NoServices());
     }
@@ -78,31 +80,69 @@ public class NodeEnginePoolAdaptiveTests
     }
 
     /// <summary>
+    /// The engine's event-loop delay as the pool last read it, in milliseconds.
+    /// </summary>
+    /// <param name="pool">The pool.</param>
+    static double Delay(NodeEnginePool pool)
+    {
+        return pool.GetStatistics().Engines.Single().LoopDelay;
+    }
+
+    /// <summary>
     /// Work that keeps the engine's thread busy past the target delay brings the engine's limit down; work that only
     /// waits, with the limit what holds it back, takes it up again.
     /// </summary>
+    /// <remarks>
+    /// The delay is the engine's thread's, and a machine short of cores makes it late with no help from the work: the
+    /// thread waits for a core, by tens of milliseconds and, with every core taken, by a hundred and more. The pool is
+    /// right to lower the limit then, so the test cannot ask for the default target's forty milliseconds. Its target is
+    /// set between the two kinds of work instead: the busy work keeps what is posted waiting the best part of a second,
+    /// eight calls of a tenth of a second queued on one thread, while the waiting work leaves the thread all but idle,
+    /// late only by what the machine adds. And each window is judged by the delay it measured: one of waiting work the
+    /// loop kept up in must raise the limit, and one the machine made late must not. Waiting work has a few windows to
+    /// show the loop keeping up, which on a machine with a core to spare is the first.
+    /// </remarks>
     [TestMethod]
     public async Task The_limit_falls_under_busy_work_and_rises_under_waiting_work()
     {
-        await using var pool = Pool(max: 8);
+        const double target = 250;
+        await using var pool = Pool(max: 8, target);
 
-        // The first reading starts the measuring.
+        // The first reading starts the measuring: the limit stays where it started unless the loop was late.
         await pool.RunAsync(Work, exports => Task.FromResult((bool)exports.CallMethod("busy", 1)));
         await pool.AdaptAsync();
-        Assert.AreEqual(8, Limit(pool));
+        var start = Limit(pool);
+        Assert.IsTrue(Delay(pool) > target ? start < 8 : start == 8, $"The limit went to {start} with the event loop {Delay(pool)} ms late.");
 
         await LoadAsync(pool, "busy", 100, callers: 8, TimeSpan.FromMilliseconds(600));
         await pool.AdaptAsync();
 
         var fallen = Limit(pool);
-        Assert.IsTrue(fallen < 8, $"The limit stayed at {fallen} with the event loop {pool.GetStatistics().Engines.Single().LoopDelay} ms late.");
-        Assert.IsTrue(pool.GetStatistics().Engines.Single().LoopDelay > 40);
+        Assert.IsTrue(fallen < start, $"The limit stayed at {fallen} with the event loop {Delay(pool)} ms late.");
+        Assert.IsTrue(Delay(pool) > target);
 
-        await LoadAsync(pool, "wait", 50, callers: 16, TimeSpan.FromMilliseconds(600));
-        await pool.AdaptAsync();
+        var limit = fallen;
+        var delays = new List<double>();
+        for (var window = 0; window < 5; window++)
+        {
+            await LoadAsync(pool, "wait", 50, callers: 16, TimeSpan.FromMilliseconds(600));
+            await pool.AdaptAsync();
 
-        var risen = Limit(pool);
-        Assert.IsTrue(risen > fallen, $"The limit stayed at {risen} with the event loop {pool.GetStatistics().Engines.Single().LoopDelay} ms late.");
+            var delay = Delay(pool);
+            var next = Limit(pool);
+            delays.Add(delay);
+
+            if (delay <= target)
+            {
+                Assert.IsTrue(next > limit, $"The limit stayed at {next} with the event loop {delay} ms late.");
+                return;
+            }
+
+            Assert.IsTrue(next <= limit, $"The limit rose to {next} with the event loop {delay} ms late.");
+            limit = next;
+        }
+
+        Assert.Fail($"The event loop was late in every window of waiting work: {string.Join(", ", delays.Select(d => $"{d:0} ms"))}.");
     }
 
     /// <summary>

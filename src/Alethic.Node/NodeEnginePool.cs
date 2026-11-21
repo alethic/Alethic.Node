@@ -93,9 +93,9 @@ public sealed class NodeEnginePool : IAsyncDisposable
 
     /// <summary>
     /// When the pool last adapted, which began the window the leases completed are counted in, as a
-    /// <see cref="Stopwatch"/> timestamp. Under the lock.
+    /// <see cref="Stopwatch"/> timestamp from <see cref="ReadWindowClock"/>. Under the lock.
     /// </summary>
-    long windowStarted = Stopwatch.GetTimestamp();
+    long windowStarted;
 
     bool disposed;
 
@@ -122,6 +122,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         this.services = services ?? throw new ArgumentNullException(nameof(services));
+        windowStarted = ReadWindowClock();
 
         if (options.MinConcurrencyPerEngine > options.MaxConcurrencyPerEngine)
             throw new ArgumentException("The least concurrency per engine is more than the most.", nameof(options));
@@ -371,6 +372,7 @@ public sealed class NodeEnginePool : IAsyncDisposable
             return;
 
         var now = Stopwatch.GetTimestamp();
+        var clock = ReadWindowClock();
         var start = false;
         NodeEngine? stop = null;
 
@@ -387,8 +389,8 @@ public sealed class NodeEnginePool : IAsyncDisposable
             // Scarce memory holds the pool at the engines it has: every engine is a heap.
             var room = load is { } l && l >= options.MemoryLoadLimit ? engines.Count + starting : options.EngineCount;
 
-            var window = Milliseconds(windowStarted, now) / 1000;
-            windowStarted = now;
+            var window = Milliseconds(windowStarted, clock) / 1000;
+            windowStarted = clock;
 
             foreach (var engine in engines)
             {
@@ -542,6 +544,15 @@ public sealed class NodeEnginePool : IAsyncDisposable
     static double Milliseconds(long from, long to)
     {
         return Math.Max(0, to - from) * 1000.0 / Stopwatch.Frequency;
+    }
+
+    /// <summary>
+    /// The time the throughput window is measured by, as a <see cref="Stopwatch"/> timestamp: the stopwatch's, or a test's
+    /// clock.
+    /// </summary>
+    long ReadWindowClock()
+    {
+        return (options.ReadWindowClock ?? Stopwatch.GetTimestamp)();
     }
 
     /// <summary>
