@@ -245,14 +245,14 @@ jobs:
         prerelease: ${{ contains(steps.GitVersion.outputs.semVer, '-') }}
         makeLatest: ${{ !contains(steps.GitVersion.outputs.semVer, '-') }}
         token: ${{ secrets.GITHUB_TOKEN }}
-    # Trusted publishing: no stored key. The user is the nuget.org account, not an organization, that
+    # Trusted publishing: no stored key. NUGET_USER is the nuget.org username, not an organization, that
     # created the trusted publishing policy for this repository and workflow.
     - name: NuGet Login
       if: env.PUBLISH == 'true'
       id: NuGetLogin
       uses: NuGet/login@v1
       with:
-        user: jhaltom
+        user: ${{ secrets.NUGET_USER }}
     # --skip-duplicate makes pushing a version nuget.org already has a no-op.
     - name: Push NuGet
       if: env.PUBLISH == 'true'
