@@ -50,6 +50,24 @@ public class FetchRequestHandlerContractTests
     }
 
     [TestMethod]
+    public async Task An_ES_module_awaiting_at_its_top_level_is_the_application()
+    {
+        // An ES module's namespace carries its default export as any bundle's exports do, and one that awaits its
+        // startup at the top level is imported, since require cannot load it, and is ready before its first request.
+        const string Module = """
+            const greeting = await Promise.resolve('esm');
+            export default { fetch(request) { return new Response(greeting + ':' + new URL(request.url).pathname, { status: 200 }); } };
+            """;
+
+        var (services, engine) = Build("", o => o.Module = TestModules.FromText("app.mjs", Module, ".mjs"));
+        await using var _ = services;
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/x");
+        using var response = await engine.SendAsync(request);
+        Assert.AreEqual("esm:/x", await response.Content.ReadAsStringAsync());
+    }
+
+    [TestMethod]
     public async Task A_bare_function_default_is_the_fetch_handler()
     {
         // What createRequestHandler-style factories produce: the handler itself, not an object

@@ -13,7 +13,9 @@ pages. .NET 8 and 9, and .NET Framework 4.7.2 and later.
 | [Alethic.Node.AspNet.Components](src/Alethic.Node.AspNet.Components/README.md) | React, or any framework's, components on Web Forms pages. |
 | [Alethic.Node.Http](src/Alethic.Node.Http/README.md) | The protocol the two web hosts share. Referenced through them. |
 
-Each needs the native runtime for the platforms you deploy to: `Microsoft.JavaScript.LibNode.<rid>`.
+Each needs the native runtime for the platforms you deploy to: `Microsoft.JavaScript.LibNode.<rid>`, 26.1.2 or later.
+LibNode 26 is Node.js 26, and 64-bit only: x64 and arm64 on Windows, Linux (glibc 2.35 or later) and macOS (13.5 or
+later). A .NET Framework site needs a 64-bit application pool.
 
 ```csharp
 services.AddNodeEnginePool(o => o.EngineCount = 2);

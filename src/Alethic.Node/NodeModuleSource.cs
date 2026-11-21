@@ -14,8 +14,9 @@ namespace Alethic.Node;
 /// runtime with its module scope intact. Nothing here caches anything — Node already does, the same
 /// way it does for any other program.
 ///
-/// Modules must be self-contained CommonJS bundles. The embedded runtime registers no dynamic
-/// import callback, so neither an ES module nor an <c>import()</c> inside the bundle resolves.
+/// A module may be CommonJS or an ES module: Node's <c>require</c> loads an ES module whose graph has no
+/// top-level await, and one that has is imported instead, where the work is asynchronous. A module on
+/// disk can <c>import()</c> others, so a bundle need not be one file.
 /// </remarks>
 public abstract class NodeModuleSource
 {

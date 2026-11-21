@@ -26,8 +26,8 @@ app.MapNodeFetchHandler(o =>
 app.Run();
 ```
 
-`app.cjs` is a CommonJS bundle whose default export has a `fetch(request, env, ctx)` function returning a `Response`,
-or is one; [Alethic.Node.Http](https://www.nuget.org/packages/Alethic.Node.Http) says what it sees. The module loads
+`app.cjs` is a CommonJS or ES module whose default export has a `fetch(request, env, ctx)` function returning a
+`Response`, or is one; [Alethic.Node.Http](https://www.nuget.org/packages/Alethic.Node.Http) says what it sees. The module loads
 on every engine at startup. `RequestBody` and `ResponseBody` are `Streamed` unless set to `Buffered`.
 
 ## An endpoint per route
@@ -55,6 +55,7 @@ caching or authorization by route; `FallbackPattern` is the fallback, or null fo
 ## Constraints
 
 - Set `EngineCount` to the cores the process may use; a container reports the host's.
-- Modules are CommonJS, bundled, without code splitting. A rebuilt bundle needs a restart.
+- A module may be CommonJS or ES, and may `import()` its chunks. A rebuilt module needs a restart.
+- The native runtime is LibNode 26: 64-bit, glibc 2.35 or later on Linux (not Alpine), macOS 13.5 or later.
 - Module state is shared by every render on an engine.
 - A streamed response cannot change its status after its first byte.

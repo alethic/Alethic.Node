@@ -9,6 +9,11 @@ dotnet add package Alethic.Node
 dotnet add package Microsoft.JavaScript.LibNode.win-x64    # the native runtime: one per platform you deploy to
 ```
 
+The native runtime is LibNode 26 (Node.js 26), `Microsoft.JavaScript.LibNode.<rid>` 26.1.2 or later with
+node-api-dotnet 0.9.44 or later: 64-bit only (x64, arm64; there is no x86 build), Windows with the Universal C Runtime,
+Linux with glibc 2.35 or later (not Alpine or other musl distributions), macOS 13.5 or later. An older libnode, such
+as 20.1800, ends the process when started; on Windows the pool refuses it first, with an exception naming the file.
+
 ## Use
 
 ```csharp
@@ -31,7 +36,9 @@ var digest = await pool.RunAsync(module, async exports =>
 The callback runs on the engine's thread with the module's exports, in node-api-dotnet's types. A `JSValue` lives
 only until the next `await`; hold one across it through a `JSReference`, and return plain .NET data.
 
-A module is loaded once per engine with Node's `require` and keeps its state for the engine's life. Calls that must
+A module is loaded once per engine with Node's `require` and keeps its state for the engine's life. It may be
+CommonJS or an ES module; an ES module that awaits at its top level is imported instead, by `RunAsync` (the
+synchronous `Run` cannot wait for it). A module can `import()` others, so a bundle may be split into chunks. Calls that must
 share one engine take a lease: `await using var lease = await pool.AcquireAsync();` and run against it. Without a
 container, construct the pool from its options, a logger factory and a service provider.
 
@@ -64,6 +71,7 @@ its decisions at `Debug`.
 ## Constraints
 
 - Node starts once per process. An ASP.NET application restarted in the same process cannot start it again.
-- Modules are CommonJS, bundled, without code splitting: the embedded runtime cannot `import()`.
+- A module is a file: its own `import()` and `require` resolve from it, by Node's rules.
+- The process is 64-bit: LibNode has no x86 build. A 32-bit process is refused unless `LibNodePath` names a library.
 - Module state is shared by every call on an engine, and a rebuilt module is not picked up until restart.
 - An engine's memory is V8's; the .NET garbage collector does not see it.

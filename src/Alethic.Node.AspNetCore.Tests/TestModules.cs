@@ -26,16 +26,26 @@ static class TestModules
     /// </remarks>
     /// <param name="name">Name reported in stack traces.</param>
     /// <param name="text"></param>
-    public static NodeModuleSource FromText(string name, string text)
+    public static NodeModuleSource FromText(string name, string text) => FromText(name, text, ".cjs");
+
+    /// <summary>
+    /// Writes module text to a temporary file with the given extension, which is what tells Node its format:
+    /// <c>.cjs</c> for CommonJS, <c>.mjs</c> for an ES module.
+    /// </summary>
+    /// <param name="name">Name reported in stack traces.</param>
+    /// <param name="text"></param>
+    /// <param name="extension">The file's extension, with its dot.</param>
+    public static NodeModuleSource FromText(string name, string text, string extension)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(extension);
 
         var directory = Path.Combine(Path.GetTempPath(), "alethic-aspnetcore-node-tests");
         Directory.CreateDirectory(directory);
 
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..32];
-        var file = Path.Combine(directory, $"{Path.GetFileNameWithoutExtension(name)}-{hash}.cjs");
+        var file = Path.Combine(directory, $"{Path.GetFileNameWithoutExtension(name)}-{hash}{extension}");
 
         // Content-addressed, so a concurrent writer is writing identical bytes; a rename into place
         // keeps a half-written file from ever being loadable.

@@ -10,6 +10,8 @@ dotnet add package Alethic.Node.AspNet.Components
 dotnet add package Microsoft.JavaScript.LibNode.win-x64
 ```
 
+LibNode 26 is 64-bit only: the site runs in a 64-bit application pool.
+
 ## Setup
 
 Register the prefix in `web.config`, and give every control your client's two modules with a skin, as a style sheet
@@ -60,7 +62,7 @@ that sees the command first and may return `false` to keep it in the browser.
 | Property | |
 | --- | --- |
 | `Module` | The browser's ES module. Unset, the page's global scope. |
-| `ServerModule` | The server's CommonJS module. Unset, no server render. |
+| `ServerModule` | The server's module, CommonJS or ES. Unset, no server render. |
 | `ServerRender`, `ServerRenderTimeout` | `true`; 10 s. |
 
 A component that fails on the server throws a `ComponentRenderException` from its control; a render that fails as a
