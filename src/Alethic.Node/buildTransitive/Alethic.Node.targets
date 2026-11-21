@@ -1,0 +1,12 @@
+<Project>
+
+    <!-- LibNode 26 is 64-bit alone: a 32-bit build of the application would fail to load it at run time. Said at build
+         time instead, as Microsoft.JavaScript.NodeApi.Embedding does. A .NET Framework executable built for AnyCPU
+         prefers 32 bits unless told otherwise. -->
+    <Target Name="AlethicNodeWarnBitness" AfterTargets="CoreCompile"
+        Condition=" '$(PlatformTarget)' == 'x86' Or ('$(TargetFrameworkIdentifier)' == '.NETFramework' And '$(PlatformTarget)' == 'AnyCPU' And '$(Prefer32Bit)' == 'true') ">
+        <Warning Code="ALNODE001"
+            Text="Alethic.Node runs LibNode, which has no x86 build: build for x64 or arm64, or set Prefer32Bit to false. A 32-bit process needs a 32-bit libnode of its own, named by LibNodePath." />
+    </Target>
+
+</Project>
